@@ -1,4 +1,4 @@
-import { Expression, LiteralKind, Member, NodeKind } from "./ast";
+import { Binding, Expression, LiteralKind, Member, NodeKind } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
 
@@ -114,15 +114,27 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
             }
             case Token.Let: {
                 next()
-                const name = expectName()
-                expect(Token.Equal)
-                const value = expression()
+                const bindings: Binding[] = []
+                while (true) {
+                    const name = expectName()
+                    expect(Token.Equal)
+                    const value = expression()
+                    bindings.push({
+                        kind: NodeKind.Binding,
+                        name,
+                        value
+                    })
+                    if (token as Token == Token.Comma) {
+                        next()
+                        continue
+                    }
+                    break
+                }
                 expect(Token.In)
                 const body = expression()
                 return {
                     kind: NodeKind.Let,
-                    name,
-                    value,
+                    bindings,
                     body
                 }
             }

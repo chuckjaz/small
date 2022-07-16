@@ -1,4 +1,4 @@
-import { Array, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralString, Member, NodeKind, Record, Reference, Select } from "./ast"
+import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralString, Member, NodeKind, Record, Reference, Select } from "./ast"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
 
@@ -75,7 +75,14 @@ describe("parser", () => {
     })
     describe("let", () => {
         it("can parse a let", () => {
-            expect(p("let x = 1 in x")).toEqual(lt("x", i(1), r("x")))
+            expect(p("let x = 1 in x")).toEqual(
+                lt(r("x"), b("x", i(1)))
+            )
+        })
+        it("can parse a multi-binding", () => {
+            expect(p("let x = 1, y = 2, z = 3 in x(y(z))")).toEqual(
+                lt(c(r("x"), c(r("y"), r("z"))), b("x", i(1)), b("y", i(2)), b("z", i(3)))
+            )
         })
     })
     describe("parens", () => {
@@ -175,11 +182,18 @@ function sel(target: Expression, name: string): Select {
     }
 }
 
-function lt(name: string, value: Expression, body: Expression): Let {
+function lt(body: Expression, ...bindings: Binding[]): Let {
     return {
         kind: NodeKind.Let,
-        name,
-        value,
+        bindings,
         body
+    }
+}
+
+function b(name: string, value: Expression): Binding {
+    return {
+        kind: NodeKind.Binding,
+        name,
+        value
     }
 }

@@ -5,6 +5,7 @@ export function nodeKindString(kind: NodeKind): string {
         case NodeKind.Literal: return "Literal"
         case NodeKind.Reference: return "Reference"
         case NodeKind.Let: return "Let"
+        case NodeKind.Binding: return "Binding"
         case NodeKind.Lambda: return "Lambda"
         case NodeKind.Call: return "Call"
         case NodeKind.Record: return "Record"
@@ -32,7 +33,8 @@ export function dump(node: Node): string {
                 case LiteralKind.String: return `"${node.value}"`
             }
         case NodeKind.Reference: return node.name
-        case NodeKind.Let: return `let ${node.name} = ${dump(node.value)} in ${dump(node.body)}`
+        case NodeKind.Let: return `let ${node.bindings.map(dump).join(", ")} in ${dump(node.body)}`
+        case NodeKind.Binding: return `${node.name} = ${dump(node.value)}`
         case NodeKind.Call: return `${dump(node.target)}(${node.args.map(dump).join(", ")})`
         case NodeKind.Lambda: return `\(${node.parameters.join(", ")})(${dump(node.body)})`
         case NodeKind.Record: return `{ ${node.members.map(dump).join(", ")} }`

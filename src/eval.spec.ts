@@ -1,5 +1,5 @@
 import { 
-    Array, Call, Expression, Index, Lambda, Let, LiteralInt, LiteralKind, Member, NodeKind, Record, Reference, Select } from "./ast"
+    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralInt, LiteralKind, Member, NodeKind, Record, Reference, Select } from "./ast"
 import { evaluate } from "./eval"
 
 describe("eval", () => {
@@ -29,12 +29,47 @@ describe("eval", () => {
         expect(
             evaluate(
                 lt(
-                    "x",
-                    i(1),
-                    r("x")
+                    r("x"),
+                    b("x", i(1))
                 )
             )
         ).toEqual(i(1))
+    })
+    it("can multi-let", () => {
+        expect(
+            evaluate(
+                lt(
+                    rec(
+                        m("x", r("x")),
+                        m("y", r("y")),
+                        m("z", r("z"))
+                    ),
+                    b("x", i(1)),
+                    b("y", i(2)),
+                    b("z", i(3))
+                )
+            )
+        ).toEqual(
+            rec(
+                m("x", i(1)),
+                m("y", i(2)),
+                m("z", i(3))
+            )
+        )
+    })
+    it("can telescope", () => {
+        expect(
+            evaluate(
+                lt(
+                    a(r("x"), r("y"), r("z")),
+                    b("x", i(1)),
+                    b("y", a(r("x"))),
+                    b("z", a(r("y")))
+                )
+            )
+        ).toEqual(
+            a(i(1), a(i(1)), a(a(i(1))))
+        )
     })
 })
 
@@ -108,11 +143,18 @@ function sel(target: Expression, name: string): Select {
     }
 }
 
-function lt(name: string, value: Expression, body: Expression): Let {
+function lt(body: Expression, ...bindings: Binding[]): Let {
     return {
         kind: NodeKind.Let,
-        name,
-        value,
+        bindings,
         body
+    }
+}
+
+function b(name: string, value: Expression): Binding {
+    return {
+        kind: NodeKind.Binding,
+        name,
+        value
     }
 }

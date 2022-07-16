@@ -2,6 +2,7 @@ export const enum NodeKind {
     Literal,
     Reference,
     Let,
+    Binding,
     Lambda,
     Call,
     Record,
@@ -47,9 +48,14 @@ export interface Reference {
 
 export interface Let {
     kind: NodeKind.Let
+    bindings: Binding[]
+    body: Expression
+}
+
+export interface Binding {
+    kind: NodeKind.Binding
     name: string
     value: Expression
-    body: Expression
 }
 
 export interface Lambda {
@@ -105,4 +111,5 @@ export type Expression =
 
 export type Node =
     Expression |
+    Binding |
     Member

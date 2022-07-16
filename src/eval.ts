@@ -1,4 +1,4 @@
-import { Array, Expression, Lambda, LiteralInt, LiteralKind, NodeKind, Record } from "./ast";
+import { Array, Binding, Expression, Lambda, LiteralInt, LiteralKind, NodeKind, Record } from "./ast";
 
 export function evaluate(expression: Expression): Expression {
 
@@ -9,7 +9,7 @@ export function evaluate(expression: Expression): Expression {
             case NodeKind.Reference: 
                 return scope.get(node.name)
             case NodeKind.Let: 
-                return e(scopeWith(scope, node.name, e(scope, node.value)), node.body)
+                return e(telescope(scope, node.bindings, e), node.body)
             case NodeKind.Lambda: 
                 return node
             case NodeKind.Call: {
@@ -62,6 +62,18 @@ function scopeWith(parent: Scope, name: string, value: Expression): Scope {
     return {
         get:  lname => lname == name ? value : parent.get(name)
     }
+}
+
+function telescope(parent: Scope, bindings: Binding[], block: (scope: Scope, value: Expression) => Expression ): Scope {
+    const map = new Map<string, Expression>()
+    const scope: Scope = {
+        get: name => map.get(name) ?? parent.get(name)
+    }
+    for (const binding of bindings) {
+        const value = block(scope, binding.value)
+        map.set(binding.name, value)
+    }
+    return scope
 }
 
 function scopeOf(parent: Scope, names: string[], values: Expression[]): Scope {

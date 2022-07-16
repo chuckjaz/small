@@ -10,6 +10,7 @@ export const enum NodeKind {
     Array,
     Select,
     Index,
+    Projection,
 }
 
 export const enum LiteralKind {
@@ -80,7 +81,7 @@ export interface Call {
 
 export interface Record {
     kind: NodeKind.Record
-    members: Member[]
+    members: (Member | Projection)[]
 }
 
 export interface Member {
@@ -91,7 +92,7 @@ export interface Member {
 
 export interface Array {
     kind: NodeKind.Array
-    values: Expression[]
+    values: (Expression | Projection)[]
 }
 
 export interface Select {
@@ -104,6 +105,11 @@ export interface Index {
     kind: NodeKind.Index
     target: Expression
     index: Expression
+}
+
+export interface Projection {
+    kind: NodeKind.Projection
+    value: Expression
 }
 
 export type Expression =
@@ -120,4 +126,5 @@ export type Expression =
 export type Node =
     Expression |
     Binding |
-    Member
+    Member |
+    Projection

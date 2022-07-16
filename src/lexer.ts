@@ -119,7 +119,12 @@ export class Lexer {
                     result = Token.String
                     break
                 case ".":
-                    result = Token.Dot
+                    if (text[i] == "." && text[i+1] == ".") {
+                        i += 2
+                        result = Token.Project
+                    } else {
+                        result = Token.Dot
+                    }
                     break
                 case "(":
                     result = Token.LParen

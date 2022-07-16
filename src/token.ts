@@ -9,6 +9,7 @@ export const enum Token {
     Comma,
     Colon,
     Equal,
+    Project,
     LParen,
     RParen,
     LBrack,

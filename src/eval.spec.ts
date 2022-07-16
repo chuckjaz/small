@@ -1,5 +1,5 @@
 import { 
-    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralInt, LiteralKind, Member, NodeKind, Record, Reference, Select } from "./ast"
+    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralInt, LiteralKind, Member, NodeKind, Projection, Record, Reference, Select } from "./ast"
 import { evaluate } from "./eval"
 
 describe("eval", () => {
@@ -71,6 +71,47 @@ describe("eval", () => {
             a(i(1), a(i(1)), a(a(i(1))))
         )
     })
+    describe("projection", () => {
+        it("can project an array", () => {
+            expect(
+                evaluate(
+                    a(i(1), pr(a(i(2), i(3))), i(4))
+                )
+            ).toEqual(
+                a(i(1), i(2), i(3), i(4))
+            )
+        })
+        it("can multi-project an array", () => {
+            expect(
+                evaluate(
+                    a(i(1), pr(a(i(2))), i(3), pr(a(i(4))))
+                )
+            ).toEqual(a(i(1), i(2), i(3), i(4)))
+        })
+        it("can project a record", () => {
+            expect(
+                evaluate(
+                    rec(
+                        pr(
+                            rec(
+                                m("x", i(1))
+                            )
+                        ),
+                        pr(
+                            rec(
+                                m("y", i(2))
+                            )
+                        )
+                    )
+                )
+            ).toEqual(
+                rec(
+                    m("x", i(1)),
+                    m("y", i(2))
+                )
+            )
+        })
+    })
 })
 
 function i(value: number): LiteralInt {
@@ -82,7 +123,7 @@ function i(value: number): LiteralInt {
 }
 
 
-function a(...values: Expression[]): Array {
+function a(...values: (Expression | Projection)[]): Array {
     return {
         kind: NodeKind.Array,
         values
@@ -120,7 +161,7 @@ function r(name: string): Reference {
     }
 }
 
-function rec(...members: Member[]): Record {
+function rec(...members: (Member | Projection)[]): Record {
     return {
         kind: NodeKind.Record,
         members
@@ -155,6 +196,13 @@ function b(name: string, value: Expression): Binding {
     return {
         kind: NodeKind.Binding,
         name,
+        value
+    }
+}
+
+function pr(value: Expression): Projection {
+    return {
+        kind: NodeKind.Projection,
         value
     }
 }

@@ -12,7 +12,8 @@ export function nodeKindString(kind: NodeKind): string {
         case NodeKind.Member: return "Member"
         case NodeKind.Array: return "Array"
         case NodeKind.Select: return "Select"
-        case NodeKind.Index: return "Index"   
+        case NodeKind.Index: return "Index"
+        case NodeKind.Projection: return "Projection"
     }
 }
 
@@ -44,5 +45,6 @@ export function dump(node: Node): string {
         case NodeKind.Select: return `${dump(node.target)}.${node.name}`
         case NodeKind.Index: return `${dump(node.target)}[${dump(node.index)}]`
         case NodeKind.Member: return `${node.name}: ${dump(node.value)}`
+        case NodeKind.Projection: return `...${dump(node.value)}`
     }
 }

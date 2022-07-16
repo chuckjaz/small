@@ -1,4 +1,4 @@
-import { Binding, Expression, LiteralKind, Member, NodeKind } from "./ast";
+import { Binding, Expression, LiteralKind, Member, NodeKind, Projection } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
 
@@ -146,10 +146,19 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                 }
             }
             case Token.LBrack: {
-                const values: Expression[] = []
+                const values: (Expression | Projection)[] = []
                 next()
-                while (expressionPrefix[token]) {
-                    values.push(expression())
+                while (arrayValuePrefix[token]) {
+                    if (token as Token == Token.Project) {
+                        next()
+                        const value = expression()
+                        values.push({
+                            kind: NodeKind.Projection,
+                            value
+                        })
+                    } else {
+                        values.push(expression())
+                    }
                     if (token as Token == Token.Comma) next()
                 }
                 expect(Token.RBrack)
@@ -159,26 +168,36 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                 }
             }
             case Token.LBrace: {
-                const members: Member[] = []
+                const members: (Member | Projection)[] = []
                 next()
-                while (token as Token == Token.Identifier) {
-                    const name = expectName()
-                    if (token as Token == Token.Colon) {
-                        next()
+                while (memberPrefix[token]) {
+                    if (token as Token == Token.Identifier) {
+                        const name = expectName()
+                        if (token as Token == Token.Colon) {
+                            next()
+                            const value = expression()
+                            members.push({
+                                kind: NodeKind.Member,
+                                name,
+                                value
+                            })
+                        } else {
+                            members.push({
+                                kind: NodeKind.Member,
+                                name,
+                                value: {
+                                    kind: NodeKind.Reference,
+                                    name
+                                }
+                            })
+                        }
+                    }
+                    else {
+                        expect(Token.Project)
                         const value = expression()
                         members.push({
-                            kind: NodeKind.Member,
-                            name,
+                            kind: NodeKind.Projection,
                             value
-                        })
-                    } else {
-                        members.push({
-                            kind: NodeKind.Member,
-                            name,
-                            value: {
-                                kind: NodeKind.Reference,
-                                name
-                            }
                         })
                     }
                     if (token as Token == Token.Comma) next()
@@ -232,6 +251,7 @@ function tokenString(token: Token): string {
         case Token.Comma: return "Comma"
         case Token.Colon: return "Colon"
         case Token.Equal: return "Equal"
+        case Token.Project: return "Project"
         case Token.LParen: return "LParen"
         case Token.RParen: return "RParen"
         case Token.LBrack: return "LBrack"
@@ -252,5 +272,14 @@ function setOf(...tokens: Token[]): boolean[] {
     return result
 }
 
+function setOr(...sets: boolean[][]): boolean[] {
+    const result: boolean[] = []
+    sets.forEach(s => s.forEach((v, i) => result[i] = v))
+    return result
+}
+
 const expressionPrefix = setOf(Token.Identifier, Token.Integer, Token.Float, Token.String,
     Token.Lambda, Token.LParen, Token.LBrack, Token.LBrace)
+
+const memberPrefix = setOf(Token.Identifier, Token.Project)
+const arrayValuePrefix = setOr(expressionPrefix, memberPrefix)

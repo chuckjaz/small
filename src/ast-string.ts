@@ -21,6 +21,7 @@ export function literalKindString(kind: LiteralKind): string {
         case LiteralKind.Int: return "Int"
         case LiteralKind.Float: return "Float"
         case LiteralKind.String: return "String"
+        case LiteralKind.Null: return "Null"
     }
 }
 
@@ -31,6 +32,7 @@ export function dump(node: Node): string {
                 case LiteralKind.Int: return `${node.value}`
                 case LiteralKind.Float: return `${node.value}`
                 case LiteralKind.String: return `"${node.value}"`
+                case LiteralKind.Null: return 'null'
             }
         case NodeKind.Reference: return node.name
         case NodeKind.Let: return `let ${node.bindings.map(dump).join(", ")} in ${dump(node.body)}`

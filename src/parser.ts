@@ -85,6 +85,13 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                     value
                 }
             }
+            case Token.Null: {
+                return {
+                    kind: NodeKind.Literal,
+                    literal: LiteralKind.Null,
+                    value: null
+                }
+            }
             case Token.Lambda: {
                 next()
                 const parameters: string[] = []
@@ -233,6 +240,7 @@ function tokenString(token: Token): string {
         case Token.RBrace: return "RBrace"
         case Token.Let: return "let"
         case Token.In: return "in"
+        case Token.Null: return "null"
         case Token.EOF: return "EOF"
         case Token.Error: return "Error"
     }    

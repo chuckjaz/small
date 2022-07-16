@@ -1,4 +1,4 @@
-import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralString, Member, NodeKind, Record, Reference, Select } from "./ast"
+import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Member, NodeKind, Record, Reference, Select } from "./ast"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
 
@@ -12,6 +12,9 @@ describe("parser", () => {
         })
         it("can parse a string", () => {
             expect(p('"abc"')).toEqual(s("abc"))
+        })
+        it("can parse a null", () => {
+            expect(p("null")).toEqual(nl())
         })
         it("can parse a reference", () => {
             expect(p("abc")).toEqual(r("abc"))
@@ -118,6 +121,14 @@ function s(value: string): LiteralString {
         kind: NodeKind.Literal,
         literal: LiteralKind.String,
         value
+    }
+}
+
+function nl(): LiteralNull {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.Null,
+        value: null
     }
 }
 

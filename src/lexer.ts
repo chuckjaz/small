@@ -72,6 +72,7 @@ export class Lexer {
                     switch (ident) {
                         case "let": result = Token.Let; break
                         case "in": result = Token.In; break
+                        case "null": result = Token.Null; break
                     }
                     this.value = ident
                     break

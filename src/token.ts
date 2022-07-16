@@ -18,6 +18,7 @@ export const enum Token {
 
     Let,
     In,
+    Null,
 
     EOF,
     Error,

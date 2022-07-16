@@ -16,6 +16,7 @@ export const enum LiteralKind {
     Int,
     Float,
     String,
+    Null,
 }
 
 export interface LiteralInt {
@@ -36,10 +37,17 @@ export interface LiteralString {
     value: string
 }
 
+export interface LiteralNull {
+    kind: NodeKind.Literal
+    literal: LiteralKind.Null
+    value: null
+}
+
 export type Literal =
     LiteralInt |
     LiteralFloat |
-    LiteralString
+    LiteralString |
+    LiteralNull
 
 export interface Reference {
     kind: NodeKind.Reference

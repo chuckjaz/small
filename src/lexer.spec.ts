@@ -53,6 +53,9 @@ describe("lexer", () => {
     it("can scan a in", () => {
         l("in", Token.In)
     })
+    it("can scan null", () => {
+        l("null", Token.Null)
+    })
     it("can scan adjacent tokens", () => {
         l("abc(){}[].,:=/1.0", Token.Identifier, Token.LParen, Token.RParen, Token.LBrace,
             Token.RBrace, Token.LBrack, Token.RBrack, Token.Dot, Token.Comma, Token.Colon, 

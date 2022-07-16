@@ -1,4 +1,4 @@
-import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Member, NodeKind, Record, Reference, Select } from "./ast"
+import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Member, NodeKind, Projection, Record, Reference, Select } from "./ast"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
 
@@ -36,6 +36,16 @@ describe("parser", () => {
                 )
             )
         })
+        it("can parse a projection of members", () => {
+            expect(p("{x: 1, y: 2, ...other, z: 3}")).toEqual(
+                rec(
+                    m("x", i(1)),
+                    m("y", i(2)),
+                    pr(r("other")),
+                    m("z", i(3))
+                )
+            )
+        })
         it("can select a member", () => {
             expect(p("x.y")).toEqual(sel(r("x"), "y"))
         })
@@ -49,6 +59,9 @@ describe("parser", () => {
         })
         it("can parse multiple values in an array", () => {
             expect(p("[1, 2, 3]")).toEqual(a(i(1), i(2), i(3)))
+        })
+        it("can parse a array with a projecction", () => {
+            expect(p("[1, ...a, 2]")).toEqual(a(i(1), pr(r("a")), i(2)))
         })
         it("can index an array", () => {
             expect(p("a[b]")).toEqual(idx(r("a"), r("b")))
@@ -155,7 +168,7 @@ function c(target: Expression, ...args: Expression[]): Call {
     }
 }
 
-function rec(...members: Member[]): Record {
+function rec(...members: (Member | Projection)[]): Record {
     return {
         kind: NodeKind.Record,
         members
@@ -170,7 +183,7 @@ function m(name: string, value: Expression): Member {
     }
 }
 
-function a(...values: Expression[]): Array {
+function a(...values: (Expression | Projection)[]): Array {
     return {
         kind: NodeKind.Array,
         values
@@ -205,6 +218,13 @@ function b(name: string, value: Expression): Binding {
     return {
         kind: NodeKind.Binding,
         name,
+        value
+    }
+}
+
+function pr(value: Expression): Projection {
+    return {
+        kind: NodeKind.Projection,
         value
     }
 }

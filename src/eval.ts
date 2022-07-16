@@ -1,4 +1,4 @@
-import { Array, Binding, Expression, Lambda, LiteralInt, LiteralKind, NodeKind, Record } from "./ast";
+import { Array, Binding, Expression, Lambda, LiteralInt, LiteralKind, Member, NodeKind, Record } from "./ast";
 
 export function evaluate(expression: Expression): Expression {
 
@@ -19,29 +19,51 @@ export function evaluate(expression: Expression): Expression {
                 return e(newScope, target.body)
             }
             case NodeKind.Record: {
+                const memberMap = new Map<string, Expression>()
+                node.members.forEach(member => {
+                    if (member.kind == NodeKind.Projection) {
+                        const value = record(e(scope, member.value));
+                        (value.members as Member[]).forEach(m => { memberMap.set(m.name, m.value) })
+                    } else {
+                        memberMap.set(member.name, e(scope, member.value))
+                    }
+                })
+                const members: Member[] = []
+                for (const [name, value] of memberMap) {
+                    members.push({
+                        kind: NodeKind.Member,
+                        name,
+                        value
+                    })
+                }
                 return {
                     kind: NodeKind.Record,
-                    members: node.members.map(member => ({
-                        kind: NodeKind.Member,
-                        name: member.name,
-                        value: e(scope, member.value)
-                    }))
+                    members
                 }
             }
             case NodeKind.Array: {
+                const values: Expression[] = []
+                for (const value of node.values) {
+                    if (value.kind == NodeKind.Projection) {
+                        const a = array(e(scope, value.value))
+                        values.push(...a.values as Expression[])
+                    } else {
+                        values.push(e(scope, value))
+                    }
+                }
                 return {
                     kind: NodeKind.Array,
-                    values: node.values.map(value => e(scope, value))
+                    values
                 }
             }
             case NodeKind.Select: {
                 const rec = record(e(scope, node.target))
-                return (rec.members.find(member => member.name == node.name) ?? error(`Undefined member: ${node.name}`)).value
+                return (rec.members.find(member => (member as Member).name == node.name) ?? error(`Undefined member: ${node.name}`)).value
             }
             case NodeKind.Index: {
                 const target = array(e(scope, node.target))
                 const index = int(e(scope, node.index))
-                return target.values[index.value] ?? error("Index out of bound")
+                return target.values[index.value] as Expression ?? error("Index out of bound")
             }
         }
     }

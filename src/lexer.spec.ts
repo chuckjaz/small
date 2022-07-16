@@ -47,6 +47,9 @@ describe("lexer", () => {
     it("can scan a equal", () => {
         l("=", Token.Equal)
     })
+    it("can scan a project", () => {
+        l("...", Token.Project)
+    })
     it("can scan a let", () => {
         l("let", Token.Let)
     })

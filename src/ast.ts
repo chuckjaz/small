@@ -11,6 +11,8 @@ export const enum NodeKind {
     Select,
     Index,
     Projection,
+    Match,
+    MatchClause,
 }
 
 export const enum LiteralKind {
@@ -112,6 +114,18 @@ export interface Projection {
     value: Expression
 }
 
+export interface Match {
+    kind: NodeKind.Match
+    target: Expression
+    clauses: MatchClause[]
+}
+
+export interface MatchClause {
+    kind: NodeKind.MatchClause
+    pattern: Expression
+    value: Expression
+}
+
 export type Expression =
     Literal |
     Reference |
@@ -121,10 +135,12 @@ export type Expression =
     Array |
     Record |
     Select |
-    Index
+    Index |
+    Match
 
 export type Node =
     Expression |
     Binding |
     Member |
-    Projection
+    Projection |
+    MatchClause

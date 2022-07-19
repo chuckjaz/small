@@ -17,8 +17,9 @@ export const enum Token {
     LBrace,
     RBrace,
 
-    Let,
     In,
+    Let,
+    Match,
     Null,
 
     EOF,

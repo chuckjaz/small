@@ -50,11 +50,14 @@ describe("lexer", () => {
     it("can scan a project", () => {
         l("...", Token.Project)
     })
+    it("can scan a in", () => {
+        l("in", Token.In)
+    })
     it("can scan a let", () => {
         l("let", Token.Let)
     })
-    it("can scan a in", () => {
-        l("in", Token.In)
+    it("can scan match", () => {
+        l("match", Token.Match)
     })
     it("can scan null", () => {
         l("null", Token.Null)

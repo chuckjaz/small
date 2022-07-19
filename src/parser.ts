@@ -1,10 +1,12 @@
-import { Binding, Expression, LiteralKind, Member, NodeKind, Projection } from "./ast";
+import { Binding, Expression, LiteralKind, MatchClause, Member, NodeKind, Projection } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
 
 export function parse(lexer: Lexer, name: string = "<text>"): Expression {
     let token = lexer.next()
-    return expression()
+    let result = expression()
+    expect(Token.EOF)
+    return result
 
     function expression(): Expression {
         let left = primary()
@@ -86,6 +88,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                 }
             }
             case Token.Null: {
+                next()
                 return {
                     kind: NodeKind.Literal,
                     literal: LiteralKind.Null,
@@ -143,6 +146,29 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                     kind: NodeKind.Let,
                     bindings,
                     body
+                }
+            }
+            case Token.Match: {
+                next()
+                const target = expression()
+                expect(Token.LBrace)
+                const clauses: MatchClause[] = []
+                while (expressionPrefix[token]) {
+                    const pattern = expression()
+                    expect(Token.In)
+                    const value = expression()
+                    clauses.push({
+                        kind: NodeKind.MatchClause,
+                        pattern,
+                        value
+                    })
+                    if (token as Token == Token.Comma) next()
+                }
+                expect(Token.RBrace)
+                return {
+                    kind: NodeKind.Match,
+                    target,
+                    clauses
                 }
             }
             case Token.LBrack: {
@@ -258,8 +284,9 @@ function tokenString(token: Token): string {
         case Token.RBrack: return "RBrack"
         case Token.LBrace: return "LBrace"
         case Token.RBrace: return "RBrace"
-        case Token.Let: return "let"
         case Token.In: return "in"
+        case Token.Let: return "let"
+        case Token.Match: return "match"
         case Token.Null: return "null"
         case Token.EOF: return "EOF"
         case Token.Error: return "Error"
@@ -279,7 +306,7 @@ function setOr(...sets: boolean[][]): boolean[] {
 }
 
 const expressionPrefix = setOf(Token.Identifier, Token.Integer, Token.Float, Token.String,
-    Token.Lambda, Token.LParen, Token.LBrack, Token.LBrace)
+    Token.Lambda, Token.Let, Token.Match, Token.LParen, Token.LBrack, Token.LBrace)
 
 const memberPrefix = setOf(Token.Identifier, Token.Project)
 const arrayValuePrefix = setOr(expressionPrefix, memberPrefix)

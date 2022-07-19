@@ -1,4 +1,4 @@
-import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Member, NodeKind, Projection, Record, Reference, Select } from "./ast"
+import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, Projection, Record, Reference, Select } from "./ast"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
 
@@ -101,6 +101,24 @@ describe("parser", () => {
             )
         })
     })
+    describe("match", () => {
+        it("can parse an empty match", () => {
+            expect(p("match e {}")).toEqual(mtch(r("e")))
+        })
+        it("can parse a single match clause", () => {
+            expect(p("match e { a in b }")).toEqual(mtch(r("e"), cl(r("a"), r("b"))))
+        })
+        it("can parse multiple match clauses", () => {
+            expect(p("match e { a in b, c in d, e in f }")).toEqual(
+                mtch(
+                    r("e"),
+                    cl(r("a"), r("b")),
+                    cl(r("c"), r("d")),
+                    cl(r("e"), r("f"))
+                )
+            )
+        })
+    })
     describe("parens", () => {
         it("can parse a paren expression", () => {
             expect(p("(x)")).toEqual(r("x"))
@@ -110,7 +128,8 @@ describe("parser", () => {
 
 function p(text: string): Expression {
     const lexer = new Lexer(text)
-    return parse(lexer, "test")
+    const result = parse(lexer, "test")
+    return result
 }
 
 function i(value: number): LiteralInt {
@@ -225,6 +244,22 @@ function b(name: string, value: Expression): Binding {
 function pr(value: Expression): Projection {
     return {
         kind: NodeKind.Projection,
+        value
+    }
+}
+
+function mtch(target: Expression, ...clauses: MatchClause[]): Match {
+    return {
+        kind: NodeKind.Match,
+        target,
+        clauses
+    }
+}
+
+function cl(pattern: Expression, value: Expression): MatchClause {
+    return {
+        kind: NodeKind.MatchClause,
+        pattern,
         value
     }
 }

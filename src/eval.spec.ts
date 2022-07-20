@@ -314,7 +314,7 @@ function cl(pattern: Expression, value: Expression): MatchClause {
     }
 }
 
-function evx(value: Expression): jasmine.Matchers<Expression> {
+export function evx(value: Expression): jasmine.Matchers<Expression> {
     const result = evaluate(value)
     removeRuntimeCaches(result)
     return expect(result)

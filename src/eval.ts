@@ -69,7 +69,7 @@ export function evaluate(expression: Expression): Expression {
             case NodeKind.Match: {
                 const target = e(scope, node.target)
                 for (const clause of node.clauses) {
-                    const valueScope = matches(scope, clause.pattern, target)
+                    const valueScope = matches(scope, reduce(scope, clause.pattern), target)
                     if (valueScope) {
                         return e(valueScope, clause.value)
                     }

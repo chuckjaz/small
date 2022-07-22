@@ -125,7 +125,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
             case Token.Let: {
                 next()
                 const bindings: Binding[] = []
-                while (true) {
+                while (token as Token == Token.Identifier) {
                     const name = expectName()
                     expect(Token.Equal)
                     const value = expression()

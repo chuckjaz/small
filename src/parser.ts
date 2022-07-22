@@ -134,7 +134,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
     function lt(): Let {
         expect(Token.Let)
         const bindings: Binding[] = []
-        while (true) {
+        while (token as any == Token.Identifier) {
             const name = expectName()
             expect(Token.Equal)
             const value = expression()
@@ -145,9 +145,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
             })
             if (token as Token == Token.Comma) {
                 next()
-                continue
             }
-            break
         }
         expect(Token.In)
         const body = expression()
@@ -359,7 +357,9 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
 
     function error(message: string): never {
         const msg = `Error ${name}:${lexer.line}:${lexer.start - lexer.lineStart + 1}: ${message}`
-        throw new Error(msg)
+        const err = new Error(msg);
+        (err as any).line = lexer.line
+        throw err
     }
 }
 

@@ -1,17 +1,18 @@
 import {
-    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralInt, LiteralKind, Match, MatchClause, Member, Node, NodeKind, Projection, Record, Reference, Select
+    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralInt, LiteralKind, Match, MatchClause, Member, Node, NodeKind, Pattern, Projection, Record, Reference, Select, Variable
 } from "./ast"
-import { evaluate } from "./eval"
+import { dump } from "./ast-string"
+import { eq, evaluate, RuntimeRecord, Value } from "./eval"
 
 describe("eval", () => {
     it("can evaluate a literal", () => {
-        evx(i(10)).toEqual(i(10))
+        evx(i(10), i(10))
     })
     it("can call a lambda", () => {
-        evx(c(l(["x"], r("x")), i(10))).toEqual(i(10))
+        evx(c(l(["x"], r("x")), i(10)), i(10))
     })
     it("can index", () => {
-        evx(idx(a(i(1), i(2), i(3)), i(1))).toEqual(i(2))
+        evx(idx(a(i(1), i(2), i(3)), i(1)), i(2))
     })
     it("can select", () => {
         evx(
@@ -21,16 +22,18 @@ describe("eval", () => {
                     m("two", i(2))
                 ),
                 "two"
-            )
-        ).toEqual(i(2))
+            ),
+            i(2)
+        )
     })
     it("can let", () => {
         evx(
             lt(
                 r("x"),
                 b("x", i(1))
-            )
-        ).toEqual(i(1))
+            ),
+            i(1)
+        )
     })
     it("can multi-let", () => {
         evx(
@@ -43,12 +46,11 @@ describe("eval", () => {
                 b("x", i(1)),
                 b("y", i(2)),
                 b("z", i(3))
-            )
-        ).toEqual(
-            rec(
-                m("x", i(1)),
-                m("y", i(2)),
-                m("z", i(3))
+            ),
+            rv(
+                mv("x", i(1)),
+                mv("y", i(2)),
+                mv("z", i(3))
             )
         )
     })
@@ -59,23 +61,21 @@ describe("eval", () => {
                 b("x", i(1)),
                 b("y", a(r("x"))),
                 b("z", a(r("y")))
-            )
-        ).toEqual(
-            a(i(1), a(i(1)), a(a(i(1))))
+            ),
+            av(i(1), av(i(1)), av(av(i(1))))
         )
     })
     describe("projection", () => {
         it("can project an array", () => {
             evx(
-                a(i(1), pr(a(i(2), i(3))), i(4))
-            ).toEqual(
-                a(i(1), i(2), i(3), i(4))
+                a(i(1), pr(a(i(2), i(3))), i(4)),
+                av(i(1), i(2), i(3), i(4))
             )
         })
         it("can multi-project an array", () => {
             evx(
-                a(i(1), pr(a(i(2))), i(3), pr(a(i(4))))
-            ).toEqual(a(i(1), i(2), i(3), i(4)))
+                a(i(1), pr(a(i(2))), i(3), pr(a(i(4)))),
+                av(i(1), i(2), i(3), i(4)))
         })
         it("can project a record", () => {
             evx(
@@ -90,11 +90,10 @@ describe("eval", () => {
                             m("y", i(2))
                         )
                     )
-                )
-            ).toEqual(
-                rec(
-                    m("x", i(1)),
-                    m("y", i(2))
+                ),
+                rv(
+                    mv("x", i(1)),
+                    mv("y", i(2))
                 )
             )
         })
@@ -105,32 +104,36 @@ describe("eval", () => {
                 mtch(
                     i(1),
                     cl(i(1), i(2))
-                )
-        ).toEqual(i(2))
+                ),
+                i(2)
+            )
         })
         it("can match to a variable", () => {
             evx(
                 mtch(
                     i(1),
-                    cl(r("x"), r("x"))
-                )
-            ).toEqual(i(1))
+                    cl(v("x"), r("x"))
+                ),
+                i(1)
+            )
         })
         it("can match to an array", () => {
             evx(
                 mtch(
                     a(i(1), i(2)),
-                    cl(a(i(1), i(2)), i(3))
-                )
-            ).toEqual(i(3))
+                    cl(ap(i(1), i(2)), i(3))
+                ),
+                i(3)
+            )
         })
         it("can match variables in an array", () => {
             evx(
                 mtch(
                     a(i(1), i(2), i(3)),
-                    cl(a(r("a"), r("b"), r("c")), a(r("c"), r("b"), r("a")))
-                )
-            ).toEqual(a(i(3), i(2), i(1)))
+                    cl(ap(v("a"), v("b"), v("c")), a(r("c"), r("b"), r("a")))
+                ),
+                av(i(3), i(2), i(1))
+            )
         })
         it("can match a record", () => {
             evx(
@@ -140,14 +143,15 @@ describe("eval", () => {
                         m("y", i(2))
                     ),
                     cl(
-                        rec(
-                            m("x", r("x")),
-                            m("y", r("y"))
+                        rp(
+                            mp("x", v("x")),
+                            mp("y", v("y"))
                         ),
                         a(r("x"), r("y"))
                     )
-                )
-            ).toEqual(a(i(1), i(2)))
+                ),
+                av(i(1), i(2))
+            )
         })
         describe("projection", () => {
             it("can match a prefix of the array", () => {
@@ -155,33 +159,36 @@ describe("eval", () => {
                     mtch(
                         a(i(1), i(2), i(3)),
                         cl(
-                            a(i(1), pr(r("x"))),
+                            ap(i(1), pp(v("x"))),
                             r("x")
                         )
-                    )
-                ).toEqual(a(i(2), i(3)))
+                    ),
+                    av(i(2), i(3))
+                )
             })
             it("can match the suffix of an array", () => {
                 evx(
                     mtch(
                         a(i(1), i(2), i(3)),
                         cl(
-                            a(pr(r("x")), i(3)),
+                            ap(pp(v("x")), i(3)),
                             r("x")
                         )
-                    )
-                ).toEqual(a(i(1), i(2)))
+                    ),
+                    av(i(1), i(2))
+                )
             })
             it("can match the both prefix and suffix", () => {
                 evx(
                     mtch(
                         a(i(1), i(2), i(3)),
                         cl(
-                            a(i(1), pr(r("x")), i(3)),
+                            ap(i(1), pp(v("x")), i(3)),
                             r("x")
                         )
-                    )
-                ).toEqual(a(i(2)))
+                    ),
+                    av(i(2))
+                )
             })
             it("can match a projected record", () => {
                 evx(
@@ -192,14 +199,15 @@ describe("eval", () => {
                             m("z", i(3))
                         ),
                         cl(
-                            rec(
-                                m("x", r("x")),
-                                pr(r("rest"))
+                            rp(
+                                mp("x", v("x")),
+                                pp(v("rest"))
                             ),
                             a(r("x"), r("rest"))
                         )
-                    )
-                ).toEqual(a(i(1), rec(m("y", i(2)), m("z", i(3)))))
+                    ),
+                    av(i(1), rv(mv("y", i(2)), mv("z", i(3))))
+                )
             })
         })
     })
@@ -214,7 +222,7 @@ function i(value: number): LiteralInt {
 }
 
 
-function a(...values: (Expression | Projection)[]): Array {
+function a(...values: (Expression | Projection<Expression>)[]): Array<Expression | Projection<Expression>> {
     return {
         kind: NodeKind.Array,
         values
@@ -252,14 +260,14 @@ function r(name: string): Reference {
     }
 }
 
-function rec(...members: (Member | Projection)[]): Record {
+function rec(...members: (Member<Expression> | Projection<Expression>)[]): Record<Member<Expression> | Projection<Expression>> {
     return {
         kind: NodeKind.Record,
         members
     }
 }
 
-function m(name: string, value: Expression): Member {
+function m(name: string, value: Expression): Member<Expression> {
     return {
         kind: NodeKind.Member,
         name,
@@ -291,7 +299,7 @@ function b(name: string, value: Expression): Binding {
     }
 }
 
-function pr(value: Expression): Projection {
+function pr(value: Expression): Projection<Expression> {
     return {
         kind: NodeKind.Projection,
         value
@@ -306,7 +314,7 @@ function mtch(target: Expression, ...clauses: MatchClause[]): Match {
     }
 }
 
-function cl(pattern: Expression, value: Expression): MatchClause {
+function cl(pattern: Expression | Variable | Pattern, value: Expression): MatchClause {
     return {
         kind: NodeKind.MatchClause,
         pattern,
@@ -314,56 +322,77 @@ function cl(pattern: Expression, value: Expression): MatchClause {
     }
 }
 
-export function evx(value: Expression): jasmine.Matchers<Expression> {
-    const result = evaluate(value)
-    removeRuntimeCaches(result)
-    return expect(result)
+function rv(...members: Member<Value>[]): RuntimeRecord {
+    const map = new Map<string, Value>()
+    members.forEach(m => map.set(m.name, m.value))
+    return {
+        kind: NodeKind.Record,
+        members,
+        map
+    }
 }
 
-function removeRuntimeCaches(value: Node) {
-    switch (value.kind) {
-        case NodeKind.Literal:
-        case NodeKind.Reference:
-            break
-        case NodeKind.Let:
-            value.bindings.forEach(removeRuntimeCaches)
-            removeRuntimeCaches(value.body)
-            break
-        case NodeKind.Binding:
-            removeRuntimeCaches(value.value)
-            break
-        case NodeKind.Lambda:
-            removeRuntimeCaches(value.body)
-            break
-        case NodeKind.Call:
-            removeRuntimeCaches(value.target)
-            value.args.forEach(removeRuntimeCaches)
-            break
-        case NodeKind.Record:
-            value.members.forEach(removeRuntimeCaches)
-            delete (value as any).map
-            break
-        case NodeKind.Member:
-            removeRuntimeCaches(value.value)
-            break
-        case NodeKind.Array:
-            value.values.forEach(removeRuntimeCaches)
-            break
-        case NodeKind.Select:
-            removeRuntimeCaches(value.target)
-            break
-        case NodeKind.Index:
-            removeRuntimeCaches(value.target)
-            removeRuntimeCaches(value.index)
-            break
-        case NodeKind.Projection:
-            break
-        case NodeKind.Match:
-            removeRuntimeCaches(value.target)
-            value.clauses.forEach(removeRuntimeCaches)
-            break
-        case NodeKind.MatchClause:
-            removeRuntimeCaches(value.value)
-            break
+function mv(name: string, value: Value): Member<Value> {
+    return {
+        kind: NodeKind.Member,
+        name,
+        value
     }
+}
+
+function av(...values: Value[]): Array<Value> {
+    return {
+        kind: NodeKind.Array,
+        values
+    }
+}
+
+function rp(...members: (Member<Expression | Variable | Pattern> | Projection<Variable | Pattern>)[]): Pattern {
+    return {
+        kind: NodeKind.Pattern,
+        pattern: { 
+            kind: NodeKind.Record,
+            members
+        }
+    }
+}
+
+function mp(name: string, value: Expression | Variable | Pattern): Member<Expression | Variable | Pattern> {
+    return {
+        kind: NodeKind.Member,
+        name,
+        value
+    }
+}
+
+function ap(...values: (Expression | Variable | Pattern | Projection<Variable | Pattern>)[]): Pattern {
+    return {
+        kind: NodeKind.Pattern,
+        pattern: {
+            kind: NodeKind.Array,
+            values
+        }
+    }
+}
+
+function pp(value: Pattern | Variable): Projection<Pattern | Variable> {
+    return {
+        kind: NodeKind.Projection,
+        value
+    }
+}
+
+function v(name: string): Variable {
+    return {
+        kind: NodeKind.Variable,
+        name
+    }
+}
+
+export function evx(value: Expression, expected: Value) {
+    const result = evaluate(value)
+    if (!eq(expected, result)) {
+        throw new Error(`Expected ${dump(result)}, to equal ${dump(value)}`)
+    }
+    return expect(result)
 }

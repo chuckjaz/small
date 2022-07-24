@@ -1,8 +1,8 @@
-import { Array, Binding, Expression, Lambda, Literal, LiteralInt, LiteralKind, Member, NodeKind, Projection, Record, Reference } from "./ast";
+import { Array, Binding, Expression, Lambda, Literal, LiteralInt, LiteralKind, Member, NodeKind, Pattern, Projection, Record, Reference, Variable } from "./ast";
 
-export function evaluate(expression: Expression): Expression {
+export function evaluate(expression: Expression): Value {
 
-    function e(scope: Scope, node: Expression): Expression {
+    function e(scope: Scope, node: Expression): Value {
         switch (node.kind) {
             case NodeKind.Literal:
                 return node
@@ -19,16 +19,16 @@ export function evaluate(expression: Expression): Expression {
                 return e(newScope, target.body)
             }
             case NodeKind.Record: {
-                const memberMap = new Map<string, Expression>()
+                const memberMap = new Map<string, Value>()
                 node.members.forEach(member => {
                     if (member.kind == NodeKind.Projection) {
                         const value = record(e(scope, member.value));
-                        (value.members as Member[]).forEach(m => { memberMap.set(m.name, m.value) })
+                        value.members.forEach(m => { memberMap.set(m.name, m.value) })
                     } else {
                         memberMap.set(member.name, e(scope, member.value))
                     }
                 })
-                const members: Member[] = []
+                const members: Member<Value>[] = []
                 for (const [name, value] of memberMap) {
                     members.push({
                         kind: NodeKind.Member,
@@ -40,14 +40,14 @@ export function evaluate(expression: Expression): Expression {
                     kind: NodeKind.Record,
                     members,
                     map: memberMap
-                } as Record
+                } as RuntimeRecord
             }
             case NodeKind.Array: {
-                const values: Expression[] = []
+                const values: Value[] = []
                 for (const value of node.values) {
                     if (value.kind == NodeKind.Projection) {
                         const a = array(e(scope, value.value))
-                        values.push(...a.values as Expression[])
+                        values.push(...a.values as Value[])
                     } else {
                         values.push(e(scope, value))
                     }
@@ -64,7 +64,7 @@ export function evaluate(expression: Expression): Expression {
             case NodeKind.Index: {
                 const target = array(e(scope, node.target))
                 const index = int(e(scope, node.index))
-                return target.values[index.value] as Expression ?? error("Index out of bound")
+                return target.values[index.value] ?? error("Index out of bound")
             }
             case NodeKind.Match: {
                 const target = e(scope, node.target)
@@ -79,96 +79,97 @@ export function evaluate(expression: Expression): Expression {
         }
     }
 
-    function reduce(scope: Scope, value: Expression): Expression {
-        return e({
-            get: name => scope.has(name) ? scope.get(name) : r(name),
-            has: scope.has
-        }, value)
-    }
+    function matches(scope: Scope, pattern: Expression | Variable | Pattern, value: Value): Scope | undefined {
+        const map = new Map<string, Value>()
 
-    function r(name: string): Reference { return { kind: NodeKind.Reference, name }}
-
-    function matches(scope: Scope, pattern: Expression, value: Expression): Scope | undefined {
-        const map = new Map<string, Expression>()
-
-        function match(p: Expression, v: Expression): boolean {
-            if (p.kind == v.kind) {
-                switch (p.kind) {
-                    case NodeKind.Literal: return p.value == (v as Literal).value
-                    case NodeKind.Reference: return false
-                    case NodeKind.Let: error("Let cannot be in a pattern")
-                    case NodeKind.Lambda: error("Lambda cannot be in a pattern")
-                    case NodeKind.Call: error("Call cannot be in a pattern")
-                    case NodeKind.Index: error("Index operator cannot be in pattern")
-                    case NodeKind.Select: error("Selection operator cannot be in a pattern")
-                    case NodeKind.Match: error("Match cannot be in a pattern")
-                    case NodeKind.Array:
-                        const pa = p.values
-                        const ar = (v as Array).values as Expression[]
-                        let projectIndex = -1
-                        for (let i = 0; i < pa.length; i++) {
-                            const pat = pa[i]
-                            if (pat.kind == NodeKind.Projection) {
-                                projectIndex = i;
-                                break
-                            }
-                            if (i >= ar.length || !match(pat, ar[i])) return false
-                        }
-                        if (projectIndex >= 0) {
-                            for (let i = ar.length - 1, j = pa.length - 1; j > projectIndex; j--, i--) {
-                                const pat = pa[j]
-                                if (pat.kind == NodeKind.Projection) {
-                                    error("Only one array projection allowed in a pattern")
-                                }
-                                if (!match(pat, ar[i])) return false
-                            }
-                            const values = ar.slice(projectIndex, ar.length - (pa.length - (projectIndex + 1)))
-                            const projected: Array = {
-                                kind: NodeKind.Array,
-                                values
-                            }
-                            const projection = pa[projectIndex] as Projection
-                            return match(projection.value, projected)
-                        }
-                        return true
-                    case NodeKind.Record: {
-                        const rec = record(v)
-                        const map = rec.map
-                        let seen = new Set<string>()
-                        let projection: Projection | undefined = undefined
-                        for (const memberOrProjection of p.members) {
-                            if (memberOrProjection.kind == NodeKind.Projection) {
-                                if (projection) {
-                                    error("Only one member projection allowed in a pattern")
-                                }
-                                projection = memberOrProjection
-                            } else {
-                                const value = map.get(memberOrProjection.name)
-                                if (!value || !match(memberOrProjection.value, value)) return false
-                                seen.add(memberOrProjection.name)
-                            }
-                        }
-                        if (projection) {
-                            // Bind projection
-                            const boundRecord: Record = {
-                                kind: NodeKind.Record,
-                                members: rec.members.filter(m => m.kind == NodeKind.Member && !seen.has(m.name))
-                            }
-                            return match(projection.value, boundRecord)
-                        }
-                        return true
-                    }
-                }
-            } else {
-                if (p.kind == NodeKind.Reference) {
-                    const current = map.get(p.name)
-                    if (current) {
-                        return match(current, v)
-                    }
+        function match(p: Expression | Pattern | Variable, v: Value): boolean {
+            switch (p.kind) {
+                case NodeKind.Variable: {
+                    const previous = map.get(p.name)
                     map.set(p.name, v)
+                    return !previous || eq(v, previous)
+                }
+                case NodeKind.Literal: return eq(p, v)
+                case NodeKind.Reference:
+                case NodeKind.Let:
+                case NodeKind.Lambda:
+                case NodeKind.Call:
+                case NodeKind.Index:
+                case NodeKind.Select:
+                case NodeKind.Match:
+                case NodeKind.Array:
+                case NodeKind.Record:
+                    return eq(e(scope, p), v)
+                case NodeKind.Pattern:
+                    return matchPattern(p, v)
+            }
+        }
+
+        function matchPattern(pattern: Pattern, v: Value): boolean {
+            const p = pattern.pattern
+            switch (p.kind) {
+                case NodeKind.Array:
+                    const pa = p.values
+                    if (v.kind != NodeKind.Array) return false
+                    const ar = v.values
+                    let projectIndex = -1
+                    for (let i = 0; i < pa.length; i++) {
+                        const pat = pa[i]
+                        if (pat.kind == NodeKind.Projection) {
+                            projectIndex = i;
+                            break
+                        }
+                        if (i >= ar.length || !match(pat, ar[i])) return false
+                    }
+                    if (projectIndex >= 0) {
+                        for (let i = ar.length - 1, j = pa.length - 1; j > projectIndex; j--, i--) {
+                            const pat = pa[j]
+                            if (pat.kind == NodeKind.Projection) {
+                                error("Only one array projection allowed in a pattern")
+                            }
+                            if (!match(pat, ar[i])) return false
+                        }
+                        const values = ar.slice(projectIndex, ar.length - (pa.length - (projectIndex + 1)))
+                        const projected: Array<Value> = {
+                            kind: NodeKind.Array,
+                            values
+                        }
+                        const projection = pa[projectIndex] as Projection<Pattern>
+                        return match(projection.value, projected)
+                    }
+                    return true
+                case NodeKind.Record: {
+                    if (v.kind != NodeKind.Record) return false
+                    const map = v.map
+                    let seen = new Set<string>()
+                    let projection: Projection<Pattern | Variable> | undefined = undefined
+                    for (const memberOrProjection of p.members) {
+                        if (memberOrProjection.kind == NodeKind.Projection) {
+                            if (projection) {
+                                error("Only one member projection allowed in a pattern")
+                            }
+                            projection = memberOrProjection
+                        } else {
+                            const value = map.get(memberOrProjection.name)
+                            if (!value || !match(memberOrProjection.value, value)) return false
+                            seen.add(memberOrProjection.name)
+                        }
+                    }
+                    if (projection) {
+                        const members = v.members.filter(m => m.kind == NodeKind.Member && !seen.has(m.name))
+                        const map = new Map<string, Value>()
+                        members.forEach(m => map.set(m.name, m.value))
+                        // Bind projection
+                        const boundRecord: RuntimeRecord = {
+                            kind: NodeKind.Record,
+                            members,
+                            map
+                        }
+
+                        return match(projection.value, boundRecord)
+                    }
                     return true
                 }
-                return false
             }
         }
 
@@ -186,7 +187,7 @@ export function evaluate(expression: Expression): Expression {
 
 
 interface Scope {
-    get(name: string): Expression
+    get(name: string): Value
     has(name: string): boolean
 }
 
@@ -195,8 +196,8 @@ const emptyScope: Scope = {
     has: name => false
 }
 
-function telescope(parent: Scope, bindings: Binding[], block: (scope: Scope, value: Expression) => Expression ): Scope {
-    const map = new Map<string, Expression>()
+function telescope(parent: Scope, bindings: Binding[], block: (scope: Scope, value: Expression) => Value): Scope {
+    const map = new Map<string, Value>()
     const scope: Scope = {
         get: name => map.get(name) ?? parent.get(name),
         has: name => map.has(name) || parent.has(name)
@@ -208,48 +209,76 @@ function telescope(parent: Scope, bindings: Binding[], block: (scope: Scope, val
     return scope
 }
 
-function scopeOf(parent: Scope, names: string[], values: Expression[]): Scope {
-    const map = new Map<string, Expression>()
+function scopeOf(parent: Scope, names: string[], values: Value[]): Scope {
+    const map = new Map<string, Value>()
     for (let i = 0; i < names.length; i++) {
         map.set(names[i], values[i])
     }
     return scopeFromMap(parent, map)
 }
 
-function scopeFromMap(parent: Scope, map: Map<string, Expression>): Scope {
+function scopeFromMap(parent: Scope, map: Map<string, Value>): Scope {
     return {
         get: name => map.get(name) ?? parent.get(name),
         has: name => map.has(name) || parent.has(name)
     }
 }
 
-function lambda(value: Expression): Lambda {
+function lambda(value: Value): Lambda {
    return value.kind == NodeKind.Lambda ? value : error("Invalid: Expected a lambda")
 }
 
-interface RuntimeRecord extends Record {
-    map: Map<string, Expression>
+export type Value =
+    Literal |
+    RuntimeRecord |
+    Array<Value> |
+    Lambda
+
+export interface RuntimeRecord extends Record<Member<Value>> {
+    map: Map<string, Value>
 }
 
-function record(value: Expression): RuntimeRecord {
+export function eq(a: Value, b: Value): boolean {
+    if (a === b) return true
+    if (a.kind == b.kind) {
+        switch (a.kind) {
+            case NodeKind.Literal: return a.value === (b as Literal).value
+            case NodeKind.Record: {
+                const bp = b as RuntimeRecord
+                if (bp.members.length != a.members.length) return false
+                return a.members.every(aMember => {
+                    const bMemberValue = bp.map.get(aMember.name)
+                    return bMemberValue && eq(aMember.value, bMemberValue)
+                })
+            }
+            case NodeKind.Array: {
+                const bp = b as Array<Value>
+                return a.values.length == bp.values.length && a.values.every((av, i) => eq(av, bp.values[i]))
+            }
+        }
+    }
+    return false
+}
+
+function record(value: Value): RuntimeRecord {
     const rec: RuntimeRecord = value.kind == NodeKind.Record ? value as RuntimeRecord : error("Invalid: Expected a record")
     if ('map' in rec) {
         return rec as RuntimeRecord
     }
-    const map = new Map<string, Expression>()
+    const map = new Map<string, Value>()
     for (const memberP of rec.members) {
-        const member = memberP as Member
+        const member = memberP as Member<Value>
         map.set(member.name, member.value)
     }
     rec.map = map
     return rec
 }
 
-function array(value: Expression): Array {
+function array(value: Value): Array<Value> {
     return value.kind == NodeKind.Array ? value : error("Invalid: Expected an array")
 }
 
-function int(value: Expression): LiteralInt {
+function int(value: Value): LiteralInt {
     return value.kind == NodeKind.Literal && value.literal == LiteralKind.Int ? value : error("Expected an integer")
 }
 

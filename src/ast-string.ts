@@ -16,6 +16,8 @@ export function nodeKindString(kind: NodeKind): string {
         case NodeKind.Projection: return "Projection"
         case NodeKind.Match: return "Match"
         case NodeKind.MatchClause: return "MatchClause"
+        case NodeKind.Pattern: return "Pattern"
+        case NodeKind.Variable: return "variable"
     }
 }
 
@@ -50,5 +52,7 @@ export function dump(node: Node): string {
         case NodeKind.Projection: return `...${dump(node.value)}`
         case NodeKind.Match: return `match { ${node.clauses.map(dump).join(", ")} }`
         case NodeKind.MatchClause: return `${dump(node.pattern)} in ${dump(node.value)}`
+        case NodeKind.Pattern: return `P${dump(node.pattern)}`
+        case NodeKind.Variable: return `#${node.name}`
     }
 }

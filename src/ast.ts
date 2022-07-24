@@ -13,6 +13,8 @@ export const enum NodeKind {
     Projection,
     Match,
     MatchClause,
+    Pattern,
+    Variable,
 }
 
 export const enum LiteralKind {
@@ -20,6 +22,10 @@ export const enum LiteralKind {
     Float,
     String,
     Null,
+}
+
+export interface NodeLike {
+    kind: NodeKind
 }
 
 export interface LiteralInt {
@@ -81,20 +87,20 @@ export interface Call {
     args: Expression[]
 }
 
-export interface Record {
+export interface Record<M extends NodeLike> {
     kind: NodeKind.Record
-    members: (Member | Projection)[]
+    members: M[]
 }
 
-export interface Member {
+export interface Member<T extends NodeLike> {
     kind: NodeKind.Member
     name: string
-    value: Expression
+    value: T
 }
 
-export interface Array {
+export interface Array<T extends NodeLike> {
     kind: NodeKind.Array
-    values: (Expression | Projection)[]
+    values: T[]
 }
 
 export interface Select {
@@ -109,9 +115,9 @@ export interface Index {
     index: Expression
 }
 
-export interface Projection {
+export interface Projection<T extends NodeLike> {
     kind: NodeKind.Projection
-    value: Expression
+    value: T
 }
 
 export interface Match {
@@ -122,8 +128,19 @@ export interface Match {
 
 export interface MatchClause {
     kind: NodeKind.MatchClause
-    pattern: Expression
+    pattern: Expression | Variable | Pattern
     value: Expression
+}
+
+export interface Variable {
+    kind: NodeKind.Variable
+    name: string
+}
+
+export interface Pattern {
+    kind: NodeKind.Pattern
+    pattern: Array<Expression | Pattern | Variable | Projection<Pattern | Variable>> |
+        Record<Member<Expression |  Pattern | Variable> | Projection<Pattern | Variable>>
 }
 
 export type Expression =
@@ -132,8 +149,8 @@ export type Expression =
     Let |
     Call |
     Lambda |
-    Array |
-    Record |
+    Array<Expression | Projection<Expression>> |
+    Record<Member<Expression> | Projection<Expression>> |
     Select |
     Index |
     Match
@@ -141,6 +158,10 @@ export type Expression =
 export type Node =
     Expression |
     Binding |
-    Member |
-    Projection |
-    MatchClause
+    Member<Expression | Pattern | Variable> |
+    Projection<Expression | Pattern | Variable> |
+    Array<Expression | Pattern | Variable | Projection<Pattern | Variable>> |
+    Record<Member<Expression |  Pattern | Variable> | Projection<Pattern | Variable>> |
+    MatchClause |
+    Pattern |
+    Variable

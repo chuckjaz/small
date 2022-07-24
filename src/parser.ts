@@ -1,4 +1,4 @@
-import { Binding, Expression, LiteralKind, MatchClause, Member, NodeKind, Projection } from "./ast";
+import { Array, Binding, Expression, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, NodeLike, Pattern, Projection, Record, Reference, Variable } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
 
@@ -10,7 +10,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
 
     function expression(): Expression {
         let left = primary()
-        while (true) {
+        while (postfixExprPrefix[token]) {
             switch (token) {
                 case Token.LParen: {
                     next()
@@ -54,186 +54,227 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         return left
     }
 
+    function reference(): Reference {
+        const name = expectName()
+        return {
+            kind: NodeKind.Reference,
+            name
+        }
+    }
+
+    function int(): LiteralInt {
+        const value: number = expect(Token.Integer)
+        return {
+            kind: NodeKind.Literal,
+            literal: LiteralKind.Int,
+            value
+        }
+    }
+
+    function float(): LiteralFloat {
+        const value = expect(Token.Float)
+        return {
+            kind: NodeKind.Literal,
+            literal: LiteralKind.Float,
+            value
+        }
+    }
+
+    function str(): LiteralString {
+        const value: string = expect(Token.String)
+        return {
+            kind: NodeKind.Literal,
+            literal: LiteralKind.String,
+            value
+        }
+    }
+
+    function nul(): LiteralNull {
+        expect(Token.Null)
+        return {
+            kind: NodeKind.Literal,
+            literal: LiteralKind.Null,
+            value: null
+        }
+    }
+
+    function lambda(): Lambda {
+        expect(Token.Lambda)
+        const parameters: string[] = []
+        switch (token as Token) {
+            case Token.Identifier: {
+                parameters.push(expectName())
+                break
+            }
+            case Token.LParen: {
+                next()
+                while (token as Token == Token.Identifier) {
+                    parameters.push(expectName())
+                    if (token as Token == Token.Comma) next()
+                }
+                expect(Token.RParen)
+                break
+            }
+            default: expectName()
+        }
+        expect(Token.Dot)
+        const body = expression()
+        return {
+            kind: NodeKind.Lambda,
+            parameters,
+            body
+        }
+    }
+
+    function lt(): Let {
+        expect(Token.Let)
+        const bindings: Binding[] = []
+        while (true) {
+            const name = expectName()
+            expect(Token.Equal)
+            const value = expression()
+            bindings.push({
+                kind: NodeKind.Binding,
+                name,
+                value
+            })
+            if (token as Token == Token.Comma) {
+                next()
+                continue
+            }
+            break
+        }
+        expect(Token.In)
+        const body = expression()
+        return {
+            kind: NodeKind.Let,
+            bindings,
+            body
+        }
+    }
+
+    function rec<T extends NodeLike, P extends NodeLike>(
+        el: () => T,
+        p: () => P, 
+        defKind: NodeKind.Variable | NodeKind.Reference
+    ): Record<Member<T> | Projection<P>> {
+        expect(Token.LBrace)
+        const members: (Member<T> | Projection<P>)[] = []
+        while (arrayValuePrefix[token]) {
+            members.push(member<T, P>(el, p, defKind))
+            if (token as Token == Token.Comma) next()
+        }
+        expect(Token.RBrace)
+        return {
+            kind: NodeKind.Record,
+            members
+        }
+    }
+
+    function member<T extends NodeLike, P extends NodeLike>(
+        el: () => T,
+        p: () => P,
+        defKind: NodeKind.Reference | NodeKind.Variable
+    ): Member<T> | Projection<P> {
+        if (token == Token.Project) {
+            next()
+            const value = p()
+            return {
+                kind: NodeKind.Projection,
+                value
+            }
+        } else {
+            const name = expectName()
+            if (token == Token.Colon) {
+                next()
+                const value = el()
+                return {
+                    kind: NodeKind.Member,
+                    name,
+                    value
+                }
+            } else {
+                return {
+                    kind: NodeKind.Member,
+                    name,
+                    value: {
+                        kind: defKind,
+                        name
+                    } as any
+                }
+            }
+        }
+    }
+
+    function element<T extends NodeLike, P extends NodeLike>(
+        el: () => T,
+        p: () => P
+    ): T | Projection<P> {
+        if (token == Token.Project) {
+            next()
+            const value = p()
+            return {
+                kind: NodeKind.Projection,
+                value
+            }
+        } else {
+            return el()
+        }
+    }
+
+    function arr<T extends NodeLike, P extends NodeLike>(
+        el: () => T,
+        p: () => P
+    ): Array<T | Projection<P>> {
+        expect(Token.LBrack)
+        const values: (T | Projection<P>)[] = []
+        while (arrayValuePrefix[token]) {
+            values.push(element(el, p))
+            if (token == Token.Comma) next()
+        }
+        expect(Token.RBrack)
+        return {
+            kind: NodeKind.Array,
+            values
+        }
+    }
+
+    function match(): Match {
+        expect(Token.Match)
+        const target = expression()
+        expect(Token.LBrace)
+        const clauses: MatchClause[] = []
+        while (expressionPrefix[token]) {
+            const pattern = matchPattern()
+            expect(Token.In)
+            const value = expression()
+            clauses.push({
+                kind: NodeKind.MatchClause,
+                pattern,
+                value
+            })
+            if (token as Token == Token.Comma) next()
+        }
+        expect(Token.RBrace)
+        return {
+            kind: NodeKind.Match,
+            target,
+            clauses
+        }
+    }
+
     function primary(): Expression {
         switch (token) {
-            case Token.Identifier: {
-                const name = expectName()
-                return {
-                    kind: NodeKind.Reference,
-                    name
-                }
-            }
-            case Token.Integer: {
-                const value: number = expect(Token.Integer)
-                return {
-                    kind: NodeKind.Literal,
-                    literal: LiteralKind.Int,
-                    value
-                }
-            }
-            case Token.Float: {
-                const value: number = expect(Token.Float)
-                return {
-                    kind: NodeKind.Literal,
-                    literal: LiteralKind.Float,
-                    value
-                }
-            }
-            case Token.String: {
-                const value: string = expect(Token.String)
-                return {
-                    kind: NodeKind.Literal,
-                    literal: LiteralKind.String,
-                    value
-                }
-            }
-            case Token.Null: {
-                next()
-                return {
-                    kind: NodeKind.Literal,
-                    literal: LiteralKind.Null,
-                    value: null
-                }
-            }
-            case Token.Lambda: {
-                next()
-                const parameters: string[] = []
-                switch (token as Token) {
-                    case Token.Identifier: {
-                        parameters.push(expectName())
-                        break
-                    }
-                    case Token.LParen: {
-                        next()
-                        while (token as Token == Token.Identifier) {
-                            parameters.push(expectName())
-                            if (token as Token == Token.Comma) next()
-                        }
-                        expect(Token.RParen)
-                        break
-                    }
-                    default: expectName()
-                }
-                expect(Token.Dot)
-                const body = expression()
-                return {
-                    kind: NodeKind.Lambda,
-                    parameters,
-                    body
-                }
-            }
-            case Token.Let: {
-                next()
-                const bindings: Binding[] = []
-                while (true) {
-                    const name = expectName()
-                    expect(Token.Equal)
-                    const value = expression()
-                    bindings.push({
-                        kind: NodeKind.Binding,
-                        name,
-                        value
-                    })
-                    if (token as Token == Token.Comma) {
-                        next()
-                        continue
-                    }
-                    break
-                }
-                expect(Token.In)
-                const body = expression()
-                return {
-                    kind: NodeKind.Let,
-                    bindings,
-                    body
-                }
-            }
-            case Token.Match: {
-                next()
-                const target = expression()
-                expect(Token.LBrace)
-                const clauses: MatchClause[] = []
-                while (expressionPrefix[token]) {
-                    const pattern = expression()
-                    expect(Token.In)
-                    const value = expression()
-                    clauses.push({
-                        kind: NodeKind.MatchClause,
-                        pattern,
-                        value
-                    })
-                    if (token as Token == Token.Comma) next()
-                }
-                expect(Token.RBrace)
-                return {
-                    kind: NodeKind.Match,
-                    target,
-                    clauses
-                }
-            }
-            case Token.LBrack: {
-                const values: (Expression | Projection)[] = []
-                next()
-                while (arrayValuePrefix[token]) {
-                    if (token as Token == Token.Project) {
-                        next()
-                        const value = expression()
-                        values.push({
-                            kind: NodeKind.Projection,
-                            value
-                        })
-                    } else {
-                        values.push(expression())
-                    }
-                    if (token as Token == Token.Comma) next()
-                }
-                expect(Token.RBrack)
-                return {
-                    kind: NodeKind.Array,
-                    values
-                }
-            }
-            case Token.LBrace: {
-                const members: (Member | Projection)[] = []
-                next()
-                while (memberPrefix[token]) {
-                    if (token as Token == Token.Identifier) {
-                        const name = expectName()
-                        if (token as Token == Token.Colon) {
-                            next()
-                            const value = expression()
-                            members.push({
-                                kind: NodeKind.Member,
-                                name,
-                                value
-                            })
-                        } else {
-                            members.push({
-                                kind: NodeKind.Member,
-                                name,
-                                value: {
-                                    kind: NodeKind.Reference,
-                                    name
-                                }
-                            })
-                        }
-                    }
-                    else {
-                        expect(Token.Project)
-                        const value = expression()
-                        members.push({
-                            kind: NodeKind.Projection,
-                            value
-                        })
-                    }
-                    if (token as Token == Token.Comma) next()
-                }
-                expect(Token.RBrace)
-                return {
-                    kind: NodeKind.Record,
-                    members
-                }
-            }
+            case Token.Identifier: return reference()
+            case Token.Integer: return int()
+            case Token.Float: return float()
+            case Token.String:  return str()
+            case Token.Null: return nul()
+            case Token.Lambda: return lambda()
+            case Token.Let: return lt()
+            case Token.Match: return match()
+            case Token.LBrack: return arr(expression, expression)
+            case Token.LBrace: return rec(expression, expression, NodeKind.Reference)
             case Token.LParen: {
                 next()
                 const result = expression()
@@ -241,6 +282,48 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                 return result
             }
             default: error(`Expected an expression, received ${tokenString(token)}`)
+        }
+    }
+
+    function variable(): Variable {
+        const name = expectName()
+        return {
+            kind: NodeKind.Variable,
+            name
+        }
+    }
+
+    function matchVariableOrPattern(): Pattern | Variable {
+        switch (token) {
+            case Token.Identifier: return variable()
+            case Token.LBrace: return matchPatternRecord()
+            case Token.LBrack: return matchPatternArray()
+            default: error("Expected an identifier")
+        }
+    }
+
+    function matchPattern(): Expression | Pattern | Variable {
+        switch(token) {
+            case Token.Identifier:
+            case Token.LBrack:
+            case Token.LBrace:
+                return matchVariableOrPattern()
+            default:
+                return expression()
+        }
+    }
+
+    function matchPatternRecord(): Pattern {
+        return {
+            kind: NodeKind.Pattern,
+            pattern: rec(matchPattern, matchVariableOrPattern, NodeKind.Variable)
+        }
+    }
+
+    function matchPatternArray(): Pattern {
+        return {
+            kind: NodeKind.Pattern,
+            pattern: arr(matchPattern, matchVariableOrPattern)
         }
     }
 
@@ -271,7 +354,7 @@ function tokenString(token: Token): string {
         case Token.Identifier: return "Identifier"
         case Token.Integer: return "Integer"
         case Token.Float: return "Float"
-        case Token.String: return "String"        
+        case Token.String: return "String"
         case Token.Lambda: return "Lambda"
         case Token.Dot: return "Dot"
         case Token.Comma: return "Comma"
@@ -290,7 +373,7 @@ function tokenString(token: Token): string {
         case Token.Null: return "null"
         case Token.EOF: return "EOF"
         case Token.Error: return "Error"
-    }    
+    }
 }
 
 function setOf(...tokens: Token[]): boolean[] {
@@ -310,3 +393,4 @@ const expressionPrefix = setOf(Token.Identifier, Token.Integer, Token.Float, Tok
 
 const memberPrefix = setOf(Token.Identifier, Token.Project)
 const arrayValuePrefix = setOr(expressionPrefix, memberPrefix)
+const postfixExprPrefix = setOf(Token.Dot, Token.LBrack, Token.LParen)

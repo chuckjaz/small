@@ -28,6 +28,20 @@ describe("integration tests", () => {
             }
         `, `{ y: 2, z: 3 }`)
     })
+    it("can use an expression for a pattern", () => {
+        ex(`
+            let 
+              Enum = {
+                A: 1,
+                B: 2,
+              },
+              v = match 1 {
+                 Enum.A in Enum.B,
+                 Enum.B in Enum.A
+              }
+            in v
+        `, `2`)
+    })
 })
 
 function ex(text: string, result: string) {

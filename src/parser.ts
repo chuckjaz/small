@@ -8,8 +8,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
     expect(Token.EOF)
     return result
 
-    function expression(): Expression {
-        let left = primary()
+    function postfix(left: Expression): Expression {
         while (postfixExprPrefix[token]) {
             switch (token) {
                 case Token.LParen: {
@@ -51,7 +50,13 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
             }
             break
         }
+
         return left
+    }
+   
+    function expression(): Expression {
+        let left = primary()
+        return postfixExprPrefix[token] ? postfix(left) : left
     }
 
     function reference(): Reference {
@@ -304,7 +309,16 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
 
     function matchPattern(): Expression | Pattern | Variable {
         switch(token) {
-            case Token.Identifier:
+            case Token.Identifier: {
+                const name = expectName()
+                return postfixExprPrefix[token] ? postfix({
+                        kind: NodeKind.Reference,
+                        name
+                    }) : {
+                        kind: NodeKind.Variable,
+                        name
+                    }
+            }
             case Token.LBrack:
             case Token.LBrace:
                 return matchVariableOrPattern()

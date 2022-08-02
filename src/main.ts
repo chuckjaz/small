@@ -1,13 +1,12 @@
-import { Expression } from "./ast";
 import { Lexer } from "./lexer";
 import { parse } from "./parser";
-import { evaluate } from "./eval";
+import { evaluate, Value } from "./eval";
 import { Flags } from "./flags";
 
 import * as fs from 'fs'
-import { dump } from "./ast-string";
+import { dumpBound } from "./value-string";
 
-export function run(filename: string): Expression {
+export function run(filename: string): Value {
     const text = readFile(filename)
     const lexer = new Lexer(text)
     const value = parse(lexer, filename)
@@ -36,7 +35,7 @@ if (flags.args.length != 1) {
 
 try {
     const result = run(flags.args[0])
-    console.log(dump(result))
+    console.log(dumpBound(result))
 } catch (e: any) {
     if ('line' in e) {
         console.log(e.message)

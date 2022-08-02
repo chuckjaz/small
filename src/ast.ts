@@ -25,7 +25,7 @@ export const enum LiteralKind {
 }
 
 export interface NodeLike {
-    kind: NodeKind
+    kind: number
 }
 
 export interface LiteralInt {

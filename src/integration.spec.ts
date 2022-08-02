@@ -1,6 +1,6 @@
 import { Expression } from "./ast"
 import { evaluate } from "./eval"
-import { evx } from "./eval.spec"
+import { evbx } from "./eval.spec"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
 
@@ -44,10 +44,16 @@ describe("integration tests", () => {
     })
 })
 
+// function ex(text: string, result: string) {
+//     const exp = p(text)
+//     const r = evaluate(p(result))
+//     evx(exp, r)
+// }
+
 function ex(text: string, result: string) {
     const exp = p(text)
     const r = evaluate(p(result))
-    evx(exp, r)
+    evbx(exp, r)
 }
 
 function p(text: string): Expression {

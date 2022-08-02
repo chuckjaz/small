@@ -1,55 +1,258 @@
-import { Array, Binding, Expression, Lambda, Literal, LiteralInt, LiteralKind, Member, NodeKind, Pattern, Projection, Record, Reference, Variable } from "./ast";
+import { Array, Expression, Literal, LiteralInt, LiteralKind, Member, NodeKind, Pattern, Projection, Record, Variable } from "./ast";
 
-export function evaluate(expression: Expression): Value {
+const enum BoundKind {
+    Reference = 100,
+    Let,
+    Record,
+    Lambda,
+    Call,
+    Select,
+    Index,
+    Projection,
+    Match,
+    MatchClause,
+    Pattern,
+    Variable,
+}
 
-    function e(scope: Scope, node: Expression): Value {
+interface BoundReference {
+    kind: BoundKind.Reference,
+    name: string // debugging only
+    level: number
+    index: number
+}
+
+interface BoundLet {
+    kind: BoundKind.Let
+    bindings: BoundExpression[]
+    body: BoundExpression
+}
+
+interface BoundLambda {
+    kind: BoundKind.Lambda
+    arity: number
+    body: BoundExpression
+}
+
+interface BoundCall {
+    kind: BoundKind.Call
+    args: BoundExpression[]
+    target: BoundExpression
+}
+
+interface BoundSelect {
+    kind: BoundKind.Select
+    target: BoundExpression
+    name: string // Debugging only
+    symbol: number
+}
+
+interface BoundIndex {
+    kind: BoundKind.Index
+    target: BoundExpression
+    index: BoundExpression
+}
+
+interface BoundRecord {
+    kind: BoundKind.Record
+    symbols: number[]
+    members: (BoundExpression | BoundProjection)[]
+}
+
+interface BoundProjection {
+    kind: BoundKind.Projection
+    value: BoundExpression
+}
+
+interface BoundMatch {
+    kind: BoundKind.Match
+    target: BoundExpression
+    clauses: BoundMatchClause[]
+}
+
+interface BoundMatchClause {
+    kind: BoundKind.MatchClause
+    size: number
+    pattern: BoundExpression | BoundPattern | BoundVariable
+    value: BoundExpression
+}
+
+interface BoundPattern {
+    kind: BoundKind.Pattern
+    pattern: BoundArrayPattern | BoundRecordPattern
+}
+
+interface BoundVariable {
+    kind: BoundKind.Variable
+    name: string // debugging only
+    index: number
+}
+
+type BoundArray = Array<BoundExpression | BoundProjection>
+type BoundArrayPattern = Array<BoundExpression | BoundPatternProjection | BoundVariable | BoundPattern>
+
+interface BoundPatternProjection {
+    kind: BoundKind.Projection,
+    value: BoundPattern | BoundVariable
+}
+
+interface BoundRecordPattern {
+    kind: BoundKind.Record
+    members: (BoundPatternMember | BoundPatternProjection)[]
+}
+
+interface BoundPatternMember {
+    kind: NodeKind.Member,
+    name: string // debugging only
+    symbol: number
+    value: BoundExpression | BoundVariable | BoundPattern
+}
+
+export type BoundExpression =
+    Literal |
+    BoundReference |
+    BoundLet |
+    BoundLambda |
+    BoundCall |
+    BoundRecord |
+    BoundArray |
+    BoundSelect |
+    BoundIndex |
+    BoundMatch
+
+interface ContextBinding {
+    level: number
+    index: number
+}
+
+interface BindingContext {
+    level: number
+    find(name: string): ContextBinding | undefined
+}
+
+const emptyContext = {
+    level: -1,
+    find(name: string) { return undefined }
+}
+
+const symbols = new Map<string, number>()
+const symbolNames: string[] = []
+
+export function symbolOf(name: string): number {
+    const existing = symbols.get(name)
+    if (existing !== undefined) return existing
+    const index = symbols.size
+    symbolNames[index] = name
+    symbols.set(name, index)
+    return index
+}
+
+export function nameOfSymbol(symbol: number): string {
+    return symbolNames[symbol] ?? `<unknown symbol ${symbol}>`
+}
+
+function bind(node: Expression): BoundExpression {
+
+    return b(emptyContext, node)
+
+    function b(context: BindingContext, node: Expression): BoundExpression {
         switch (node.kind) {
-            case NodeKind.Literal:
-                return node
-            case NodeKind.Reference:
-                return scope.get(node.name)
-            case NodeKind.Let:
-                return e(telescope(scope, node.bindings, e), node.body)
-            case NodeKind.Lambda:
-                return node
+            case NodeKind.Literal: return node
+            case NodeKind.Reference: {
+                const location = context.find(node.name)
+                const name = node.name
+                if (location) {
+                    const { level, index } = location
+                    return {
+                        kind: BoundKind.Reference,
+                        name,
+                        level,
+                        index
+                    }
+                } else {
+                    error(`Undefined "${name}"`)
+                }
+            }
+            case NodeKind.Let: {
+                const indexes = new Map<string, number>()
+                let index = 0
+                let level = context.level + 1
+                for (const binding of node.bindings) {
+                    const name = binding.name
+                    if (indexes.has(name)) {
+                        error(`Duplicate variable name $name`)
+                    }
+                    indexes.set(name, index++)
+                }
+                const letContext = contextOf(context, indexes)
+                const bindings = node.bindings.map(binding => b(letContext, binding.value))
+                const body = b(letContext, node.body)
+                return {
+                    kind: BoundKind.Let,
+                    bindings,
+                    body
+                }
+            }
+            case NodeKind.Lambda: {
+                let level = context.level + 1
+                const indexes = node.parameters.reduce((map, name, index) => (map.set(name, index), map), new Map<string, number>())
+                const lambdaContext = contextOf(context, indexes)
+                const body = b(lambdaContext, node.body)
+                return {
+                    kind: BoundKind.Lambda,
+                    arity: indexes.size,
+                    body
+                }
+            }
             case NodeKind.Call: {
-                const args = node.args.map(node => e(scope, node))
-                const target = lambda(e(scope, node.target))
-                const newScope = scopeOf(scope, target.parameters, args)
-                return e(newScope, target.body)
+                let target = b(context, node.target)
+                let args = node.args.map(arg => b(context, arg))
+                return {
+                    kind: BoundKind.Call,
+                    target,
+                    args
+                }
             }
             case NodeKind.Record: {
-                const memberMap = new Map<string, Value>()
-                node.members.forEach(member => {
-                    if (member.kind == NodeKind.Projection) {
-                        const value = record(e(scope, member.value));
-                        value.members.forEach(m => { memberMap.set(m.name, m.value) })
-                    } else {
-                        memberMap.set(member.name, e(scope, member.value))
+                const symbols: number[] = []
+                const members: (BoundExpression | BoundProjection)[] = []
+                for (const member of node.members) {
+                    switch (member.kind) {
+                        case NodeKind.Projection: {
+                            const value = b(context, member.value)
+                            members.push({
+                                kind: BoundKind.Projection,
+                                value
+                            })
+                            break
+                        }
+                        default:
+                            symbols[members.length] = symbolOf(member.name)
+                            members.push(b(context, member.value))
+                            break
                     }
-                })
-                const members: Member<Value>[] = []
-                for (const [name, value] of memberMap) {
-                    members.push({
-                        kind: NodeKind.Member,
-                        name,
-                        value
-                    })
                 }
                 return {
-                    kind: NodeKind.Record,
-                    members,
-                    map: memberMap
-                } as RuntimeRecord
+                    kind: BoundKind.Record,
+                    symbols,
+                    members
+                }
             }
             case NodeKind.Array: {
-                const values: Value[] = []
+                const values: (BoundExpression | BoundProjection)[] = []
                 for (const value of node.values) {
-                    if (value.kind == NodeKind.Projection) {
-                        const a = array(e(scope, value.value))
-                        values.push(...a.values as Value[])
-                    } else {
-                        values.push(e(scope, value))
+                    switch (value.kind) {
+                        case NodeKind.Projection: {
+                            const v = b(context, value.value)
+                            values.push({
+                                kind: BoundKind.Projection,
+                                value: v
+                            })
+                            break
+                        }
+                        default:
+                            values.push(b(context, value));
+                            break
                     }
                 }
                 return {
@@ -58,228 +261,513 @@ export function evaluate(expression: Expression): Value {
                 }
             }
             case NodeKind.Select: {
-                const rec = record(e(scope, node.target))
-                return (rec.map.get(node.name) ?? error(`Undefined member: ${node.name}`))
+                const target = b(context, node.target)
+                const name = node.name
+                const symbol = symbolOf(name)
+                return {
+                    kind: BoundKind.Select,
+                    target,
+                    name,
+                    symbol
+                }
             }
             case NodeKind.Index: {
-                const target = array(e(scope, node.target))
-                const index = int(e(scope, node.index))
-                return target.values[index.value] ?? error("Index out of bound")
+                const target = b(context, node.target)
+                const index = b(context, node.index)
+                return {
+                    kind: BoundKind.Index,
+                    target,
+                    index
+                }
             }
             case NodeKind.Match: {
-                const target = e(scope, node.target)
-                for (const clause of node.clauses) {
-                    const valueScope = matches(scope, clause.pattern, target)
-                    if (valueScope) {
-                        return e(valueScope, clause.value)
-                    }
+                const target = b(context, node.target)
+
+                interface BindingScopeBuilder {
+                    indexOf(name: string): number
+                    size(): number
+                    context(): BindingContext
                 }
-                error("No matching match clause found")
-            }
-        }
-    }
 
-    function matches(scope: Scope, pattern: Expression | Variable | Pattern, value: Value): Scope | undefined {
-        const map = new Map<string, Value>()
-
-        function match(p: Expression | Pattern | Variable, v: Value): boolean {
-            switch (p.kind) {
-                case NodeKind.Variable: {
-                    const previous = map.get(p.name)
-                    map.set(p.name, v)
-                    return !previous || eq(v, previous)
-                }
-                case NodeKind.Literal: return eq(p, v)
-                case NodeKind.Reference:
-                case NodeKind.Let:
-                case NodeKind.Lambda:
-                case NodeKind.Call:
-                case NodeKind.Index:
-                case NodeKind.Select:
-                case NodeKind.Match:
-                case NodeKind.Array:
-                case NodeKind.Record:
-                    return eq(e(scope, p), v)
-                case NodeKind.Pattern:
-                    return matchPattern(p, v)
-            }
-        }
-
-        function matchPattern(pattern: Pattern, v: Value): boolean {
-            const p = pattern.pattern
-            switch (p.kind) {
-                case NodeKind.Array:
-                    const pa = p.values
-                    if (v.kind != NodeKind.Array) return false
-                    const ar = v.values
-                    let projectIndex = -1
-                    for (let i = 0; i < pa.length; i++) {
-                        const pat = pa[i]
-                        if (pat.kind == NodeKind.Projection) {
-                            projectIndex = i;
-                            break
+                function scopeBuilder(): BindingScopeBuilder {
+                    const indexes = new Map<string, number>()
+                    return {
+                        indexOf(name: string): number {
+                            const last = indexes.get(name)
+                            if (last != undefined) return last
+                            const index = indexes.size + 1
+                            indexes.set(name, index)
+                            return index
+                        },
+                        size(): number { return indexes.size },
+                        context() {
+                            if (indexes.size == 0) return context
+                            return contextOf(context, indexes)
                         }
-                        if (i >= ar.length || !match(pat, ar[i])) return false
                     }
-                    if (projectIndex >= 0) {
-                        for (let i = ar.length - 1, j = pa.length - 1; j > projectIndex; j--, i--) {
-                            const pat = pa[j]
-                            if (pat.kind == NodeKind.Projection) {
-                                error("Only one array projection allowed in a pattern")
+                }
+
+                function bindArrayPattern(
+                    builder: BindingScopeBuilder,
+                    a: Array<Expression | Pattern | Variable | Projection<Pattern | Variable>>
+                ): BoundPattern {
+                    const values: (BoundExpression | BoundPattern | BoundVariable | BoundPatternProjection)[] = []
+                    for (const value of a.values) {
+                        switch (value.kind) {
+                            case NodeKind.Projection: {
+                                const v = p(builder, value.value) as BoundPattern | BoundVariable
+                                values.push({
+                                    kind: BoundKind.Projection,
+                                    value: v
+                                })
+                                break
                             }
-                            if (!match(pat, ar[i])) return false
-                        }
-                        const values = ar.slice(projectIndex, ar.length - (pa.length - (projectIndex + 1)))
-                        const projected: Array<Value> = {
-                            kind: NodeKind.Array,
-                            values
-                        }
-                        const projection = pa[projectIndex] as Projection<Pattern>
-                        return match(projection.value, projected)
-                    }
-                    return true
-                case NodeKind.Record: {
-                    if (v.kind != NodeKind.Record) return false
-                    const map = v.map
-                    let seen = new Set<string>()
-                    let projection: Projection<Pattern | Variable> | undefined = undefined
-                    for (const memberOrProjection of p.members) {
-                        if (memberOrProjection.kind == NodeKind.Projection) {
-                            if (projection) {
-                                error("Only one member projection allowed in a pattern")
+                            default: {
+                                values.push(p(builder, value))
+                                break
                             }
-                            projection = memberOrProjection
-                        } else {
-                            const value = map.get(memberOrProjection.name)
-                            if (!value || !match(memberOrProjection.value, value)) return false
-                            seen.add(memberOrProjection.name)
                         }
                     }
-                    if (projection) {
-                        const members = v.members.filter(m => m.kind == NodeKind.Member && !seen.has(m.name))
-                        const map = new Map<string, Value>()
-                        members.forEach(m => map.set(m.name, m.value))
-                        // Bind projection
-                        const boundRecord: RuntimeRecord = {
-                            kind: NodeKind.Record,
-                            members,
-                            map
-                        }
+                    const boundPat: BoundArrayPattern = {
+                        kind: NodeKind.Array,
+                        values
+                    }
+                    return {
+                        kind: BoundKind.Pattern,
+                        pattern: boundPat
+                    }
+                }
 
-                        return match(projection.value, boundRecord)
+                function bindRecordPattern(
+                    builder: BindingScopeBuilder,
+                    r: Record<Member<Expression |  Pattern | Variable> | Projection<Pattern | Variable>>
+                ): BoundPattern {
+                    const members: (BoundPatternMember | BoundPatternProjection)[] = []
+                    for (const member of r.members) {
+                        switch (member.kind) {
+                            case NodeKind.Projection: {
+                                const value = p(builder, member.value) as BoundVariable | BoundPattern
+                                members.push({
+                                    kind: BoundKind.Projection,
+                                    value
+                                })
+                                break
+                            }
+                            case NodeKind.Member: {
+                                const value = p(builder, member.value)
+                                const name = member.name
+                                const symbol = symbolOf(name)
+                                members.push({
+                                    kind: NodeKind.Member,
+                                    name,
+                                    symbol,
+                                    value
+                                })
+                            }
+                        }
                     }
-                    return true
+                    const pattern: BoundRecordPattern = {
+                        kind: BoundKind.Record,
+                        members
+                    }
+                    return {
+                        kind: BoundKind.Pattern,
+                        pattern
+                    }
+                }
+
+                function p(builder: BindingScopeBuilder, pattern: Expression | Pattern | Variable): BoundExpression | BoundPattern | BoundVariable {
+                    switch (pattern.kind) {
+                        case NodeKind.Variable: {
+                            const name = pattern.name
+                            const index = builder.indexOf(name)
+                            return {
+                                kind: BoundKind.Variable,
+                                name,
+                                index
+                            }
+                        }
+                        case NodeKind.Pattern: {
+                            const pat = pattern.pattern
+                            switch(pat.kind) {
+                                case NodeKind.Array:
+                                    return bindArrayPattern(builder, pat)
+                                case NodeKind.Record:
+                                    return bindRecordPattern(builder, pat)
+                            }
+                        }
+                        default:
+                            return b(context, pattern)
+                    }
+                }
+
+                const clauses = node.clauses.map<BoundMatchClause>(clause => {
+                    const builder = scopeBuilder()
+                    const pattern = p(builder, clause.pattern)
+                    const size = builder.size()
+                    const clauseContext = builder.context()
+                    const value = b(clauseContext, clause.value)
+                    return {
+                        kind: BoundKind.MatchClause,
+                        pattern,
+                        size,
+                        value
+                    }
+                })
+                return {
+                    kind: BoundKind.Match,
+                    target,
+                    clauses
                 }
             }
         }
-
-        const doesMatch = match(pattern, value)
-        if (doesMatch) {
-            if (map.size > 0)
-                return scopeFromMap(scope, map)
-            return scope
-        }
-        return undefined
-    }
-
-    return e(emptyScope, expression)
- }
-
-
-interface Scope {
-    get(name: string): Value
-    has(name: string): boolean
-}
-
-const emptyScope: Scope = {
-    get: name => error(`Undefined symbol "${name}"`),
-    has: name => false
-}
-
-function telescope(parent: Scope, bindings: Binding[], block: (scope: Scope, value: Expression) => Value): Scope {
-    const map = new Map<string, Value>()
-    const scope: Scope = {
-        get: name => map.get(name) ?? parent.get(name),
-        has: name => map.has(name) || parent.has(name)
-    }
-    for (const binding of bindings) {
-        const value = block(scope, binding.value)
-        map.set(binding.name, value)
-    }
-    return scope
-}
-
-function scopeOf(parent: Scope, names: string[], values: Value[]): Scope {
-    const map = new Map<string, Value>()
-    for (let i = 0; i < names.length; i++) {
-        map.set(names[i], values[i])
-    }
-    return scopeFromMap(parent, map)
-}
-
-function scopeFromMap(parent: Scope, map: Map<string, Value>): Scope {
-    return {
-        get: name => map.get(name) ?? parent.get(name),
-        has: name => map.has(name) || parent.has(name)
     }
 }
 
-function lambda(value: Value): Lambda {
-   return value.kind == NodeKind.Lambda ? value : error("Invalid: Expected a lambda")
-}
+export type CallContext = Value[][]
 
 export type Value =
     Literal |
-    RuntimeRecord |
-    Array<Value> |
-    Lambda
+    RecordValue |
+    ArrayValue |
+    LambdaValue
 
-export interface RuntimeRecord extends Record<Member<Value>> {
-    map: Map<string, Value>
+export interface ArrayValue {
+    kind: NodeKind.Array
+    values: Value[]
 }
 
-export function eq(a: Value, b: Value): boolean {
+export interface RecordValue {
+    kind: NodeKind.Record
+    cls: number[]
+    values: Value[]
+}
+
+export interface LambdaValue {
+    kind: NodeKind.Lambda
+    context: CallContext
+    arity: number
+    body: BoundExpression
+}
+
+export function valueEquals(a: Value, b: Value): boolean {
     if (a === b) return true
-    if (a.kind == b.kind) {
-        switch (a.kind) {
-            case NodeKind.Literal: return a.value === (b as Literal).value
-            case NodeKind.Record: {
-                const bp = b as RuntimeRecord
-                if (bp.members.length != a.members.length) return false
-                return a.members.every(aMember => {
-                    const bMemberValue = bp.map.get(aMember.name)
-                    return bMemberValue && eq(aMember.value, bMemberValue)
+    if (a.kind != b.kind) return false
+    switch (a.kind) {
+        case NodeKind.Literal: {
+            const bLit = b as Literal
+            if (bLit.literal != a.literal) return false
+            return a.value == (b as Literal).value
+        }
+        case NodeKind.Array: {
+            const aValues = a.values
+            const bValues = (b as ArrayValue).values
+            if (aValues.length != bValues.length) return false
+            return aValues.every((value, index) => valueEquals(value, bValues[index]))
+        }
+        case NodeKind.Record: {
+            const bRec = b as RecordValue
+            const aCls = a.cls
+            const bCls = bRec.cls
+            if (aCls === bCls) {
+                const bValues = bRec.values
+                return a.values.every((value, index) => valueEquals(value, bValues[index]))
+            } else {
+                if (a.values.length != bRec.values.length) return false
+                return aCls.every((index, symbol) => {
+                    const bIndex = bCls[symbol]
+                    if (bIndex == undefined) return false
+                    return valueEquals(a.values[index], bRec.values[bIndex])
                 })
-            }
-            case NodeKind.Array: {
-                const bp = b as Array<Value>
-                return a.values.length == bp.values.length && a.values.every((av, i) => eq(av, bp.values[i]))
             }
         }
     }
     return false
 }
 
-function record(value: Value): RuntimeRecord {
-    const rec: RuntimeRecord = value.kind == NodeKind.Record ? value as RuntimeRecord : error("Invalid: Expected a record")
-    if ('map' in rec) {
-        return rec as RuntimeRecord
+function valueEq(expression: BoundExpression): Value {
+    return e([], expression)
+
+    function e(context: CallContext, node: BoundExpression): Value {
+        switch (node.kind) {
+            case NodeKind.Literal: return node
+            case BoundKind.Reference: return required((context[node.level] ?? [])[node.index])
+            case BoundKind.Let: {
+                const bindings: Value[] = []
+                const letContext = [...context, bindings]
+                for (const binding of node.bindings) {
+                    bindings.push(e(letContext, binding))
+                }
+                return e(letContext, node.body)
+            }
+            case BoundKind.Call: {
+                const target = lambda(e(context, node.target))
+                if (target.arity != node.args.length) {
+                    error(`Incorrect number of arguments, expected ${target.arity}, received ${node.args.length}`)
+                }
+                const args = node.args.map(v => e(context, v))
+                const callContext = [...target.context, args]
+                return e(callContext, target.body)
+            }
+            case BoundKind.Index: {
+                const target = e(context, node.target)
+                const index = int(e(context, node.index))
+                switch (target.kind) {
+                    case NodeKind.Array:
+                        return idx(target.values, index.value)
+                    case NodeKind.Literal:
+                        if (target.literal == LiteralKind.String) {
+                            return idxs(target.value, index.value)
+                        }
+                        // fall-through
+                    default:
+                        error("Value cannot be indexed")
+                }
+            }
+            case BoundKind.Select: {
+                const target = record(e(context, node.target))
+                const symbol = node.symbol
+                const index = target.cls[symbol]
+                if (index == undefined) {
+                    error(`Member "${node.name}" not found`)
+                }
+                return target.values[index]
+            }
+            case NodeKind.Array: {
+                const values: Value[] = []
+                for (const value of node.values) {
+                    switch (value.kind) {
+                        case BoundKind.Projection: {
+                            const a = array(e(context, value.value))
+                            values.push(...a.values)
+                            break
+                        }
+                        default:
+                            values.push(e(context, value))
+                            break
+                    }
+                }
+                return {
+                    kind: NodeKind.Array,
+                    values
+                }
+            }
+            case BoundKind.Record: {
+                const cls: number[] = []
+                const values: Value[] = []
+                node.members.forEach((member, index) => {
+                    switch (member.kind) {
+                        case BoundKind.Projection:
+                            const r = record(e(context, member.value))
+                            const symbols = classToSymbols(r.cls)
+                            symbols.forEach((symbol, index) => {
+                                if (cls[symbol] == undefined) {
+                                    cls[symbol] = values.length
+                                    values.push(r.values[index])
+                                }
+                            })
+                            break
+                        default:
+                            const symbol = node.symbols[index]
+                            cls[symbol] = values.length
+                            values.push(e(context, member))
+                            break
+                    }
+                })
+                return {
+                    kind: NodeKind.Record,
+                    cls,
+                    values
+                }
+            }
+            case BoundKind.Lambda: {
+                return {
+                    kind: NodeKind.Lambda,
+                    context,
+                    arity: node.arity,
+                    body: node.body
+                }
+            }
+            case BoundKind.Match: {
+                const target = e(context, node.target)
+                for (const clause of node.clauses) {
+                    const file: Value[] = []
+                    if (match(context, clause.pattern, target, file)) {
+                        const matchContext = [...context, file]
+                        return e(matchContext, clause.value)
+                    }
+                }
+                error("Match not found")
+            }
+        }
     }
-    const map = new Map<string, Value>()
-    for (const memberP of rec.members) {
-        const member = memberP as Member<Value>
-        map.set(member.name, member.value)
+
+    function match(
+        context: CallContext,
+        pattern: BoundExpression | BoundPattern | BoundVariable,
+        value: Value,
+        file: Value[]
+    ) {
+        switch (pattern.kind) {
+            case BoundKind.Variable: {
+                file[pattern.index] = value
+                return true
+            }
+            case BoundKind.Pattern: {
+                const childPattern = pattern.pattern
+                switch (childPattern.kind) {
+                    case NodeKind.Array:
+                        return matchArrayPattern(childPattern)
+                    case BoundKind.Record:
+                        return matchRecordPattern(childPattern)
+                }
+            }
+            default:
+                return valueEquals(e(context, pattern), value)
+        }
+
+        function matchArrayPattern(pattern: BoundArrayPattern): boolean {
+            if (value.kind != NodeKind.Array) return false
+            const values = value.values
+            let projection: BoundPatternProjection | undefined = undefined
+            let projectionIndex = 0
+            loop: for (let i = 0; i < pattern.values.length; i++) {
+                const element = pattern.values[i]
+                switch (element.kind) {
+                    case BoundKind.Projection:
+                        projection = element
+                        projectionIndex = i
+                        break loop
+                    default:
+                        if (!match(context, element, values[i], file)) return false
+                }
+            }
+            if (!projection) return true
+            const postfixCount = pattern.values.length - projectionIndex - 1
+            if (postfixCount + projectionIndex >= values.length) return false
+            const e = values.length - 1
+            for (let i = 0; i > projectionIndex; i--) {
+                const element = pattern.values[i]
+                if (element.kind == BoundKind.Projection) error("Only one projection allowed in a pattern")
+                if (!match(context, element, values[e - i], file)) return false
+            }
+            const projectedArray: ArrayValue = {
+                kind: NodeKind.Array,
+                values: values.slice(projectionIndex, e - postfixCount + 1)
+            }
+            return match(context, projection.value, projectedArray, file)
+        }
+
+        function matchRecordPattern(pattern: BoundRecordPattern): boolean {
+            if (value.kind != NodeKind.Record) return false
+            const cls = value.cls
+            const values = value.values
+            const seen: boolean[] = []
+            let projection: BoundPatternProjection | undefined = undefined
+            for (const member of pattern.members) {
+                switch (member.kind) {
+                    case NodeKind.Member: {
+                         const index = cls[member.symbol]
+                         if (index === undefined) return false
+                         if (!match(context, member.value, values[index], file)) return false
+                         seen[member.symbol] = true
+                         break
+                    }
+                    case BoundKind.Projection: {
+                        if (projection) error("Only one projection allowed in an array pattern")
+                        projection = member
+                    }
+                }
+            }
+            if (!projection) return true
+            const projectedValues: Value[] = []
+            const projectedCls: number[] = []
+            cls.forEach((index, symbol) => {
+                if (!seen[symbol]) {
+                    const projectedIndex = projectedValues.length
+                    projectedValues.push(values[index])
+                    projectedCls[symbol] = projectedIndex
+                }
+            })
+            const projectedRecord: RecordValue = {
+                kind: NodeKind.Record,
+                cls: projectedCls,
+                values: projectedValues
+            }
+            return match(context, projection.value, projectedRecord, file)
+        }
     }
-    rec.map = map
-    return rec
+
+    function array(node: Value): ArrayValue {
+        if (node.kind != NodeKind.Array) error("Expected an array")
+        return node
+    }
+
+    function record(node: Value): RecordValue {
+        if (node.kind != NodeKind.Record) error("Expect a record")
+        return node
+    }
+
+    function lambda(node: Value): LambdaValue {
+        if (node.kind != NodeKind.Lambda) error("Value cannot be called")
+        return node
+    }
+
+    function int(node: Value): LiteralInt {
+        if (node.kind != NodeKind.Literal || node.literal != LiteralKind.Int) error("Expected an integer")
+        return node
+    }
+
+    function rangeCheck(values: string | Value[], index: number) {
+        if (index < 0 || index >= values.length) error(`Index out of bound, $index in [0..${values.length})`)
+    }
+
+    function idx(values: Value[], index: number) {
+        rangeCheck(values, index)
+        return values[index]
+    }
+
+    function idxs(value: string, index: number): LiteralInt {
+        rangeCheck(value, index)
+        return {
+            kind: NodeKind.Literal,
+            literal: LiteralKind.Int,
+            value: value.charCodeAt(index)
+        }
+    }
+
+    function required(node: Value | undefined): Value {
+        if (!node) error("Uninitialized variable")
+        return node
+    }
 }
 
-function array(value: Value): Array<Value> {
-    return value.kind == NodeKind.Array ? value : error("Invalid: Expected an array")
+function contextOf(parent: BindingContext, indexes: Map<string, number>): BindingContext {
+    const level = parent.level + 1
+    return {
+        find(name: string): ContextBinding | undefined {
+            const index = indexes.get(name)
+            if (index !== undefined) {
+                return {
+                    level,
+                    index
+                }
+            }
+            return parent.find(name)
+        },
+        level
+    }
 }
 
-function int(value: Value): LiteralInt {
-    return value.kind == NodeKind.Literal && value.literal == LiteralKind.Int ? value : error("Expected an integer")
+export function evaluate(expression: Expression): Value {
+    const boundExpression = bind(expression)
+    return valueEq(boundExpression)
+}
+
+export function classToSymbols(cls: number[]): number[] {
+    const symbols: number[] = []
+    cls.forEach((index, symbol) => symbols[index] = symbol)
+    return symbols
 }
 
 function error(message: string): never {

@@ -1,12 +1,15 @@
 import {
-    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralInt, LiteralKind, Match, MatchClause, Member,  NodeKind, Pattern, Projection, Record, Reference, Select, Variable
+    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, Match, MatchClause, Member,  NodeKind, Pattern, Projection, Record, Reference, Select, Variable
 } from "./ast"
 import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf } from "./eval"
 import { dumpBound } from "./value-string"
 
 describe("eval", () => {
-    it("can evaluate a literal", () => {
+    it("can evaluate an int literal", () => {
         evbx(i(10), i(10))
+    })
+    it("can evaluate a boolean literal", () => {
+        evbx(bool(true), bool(true))
     })
     it("can call a lambda", () => {
         evbx(c(l(["x"], r("x")), i(10)), i(10))
@@ -196,6 +199,13 @@ function i(value: number): LiteralInt {
     }
 }
 
+function bool(value: boolean): LiteralBoolean {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.Boolean,
+        value
+    }
+}
 
 function a(...values: (Expression | Projection<Expression>)[]): Array<Expression | Projection<Expression>> {
     return {

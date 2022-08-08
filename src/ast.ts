@@ -18,6 +18,7 @@ export const enum NodeKind {
 }
 
 export const enum LiteralKind {
+    Boolean,
     Int,
     Float,
     String,
@@ -26,6 +27,12 @@ export const enum LiteralKind {
 
 export interface NodeLike {
     kind: number
+}
+
+export interface LiteralBoolean {
+    kind: NodeKind.Literal
+    literal: LiteralKind.Boolean
+    value: boolean
 }
 
 export interface LiteralInt {
@@ -53,6 +60,7 @@ export interface LiteralNull {
 }
 
 export type Literal =
+    LiteralBoolean |
     LiteralInt |
     LiteralFloat |
     LiteralString |

@@ -3,7 +3,7 @@ export const enum Token {
     Integer,
     Float,
     String,
-    
+
     Lambda,
     Dot,
     Comma,
@@ -17,10 +17,12 @@ export const enum Token {
     LBrace,
     RBrace,
 
+    False,
     In,
     Let,
     Match,
     Null,
+    True,
 
     EOF,
     Error,

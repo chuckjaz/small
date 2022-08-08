@@ -23,6 +23,7 @@ export function nodeKindString(kind: NodeKind): string {
 
 export function literalKindString(kind: LiteralKind): string {
     switch (kind) {
+        case LiteralKind.Boolean: "Boolean"
         case LiteralKind.Int: return "Int"
         case LiteralKind.Float: return "Float"
         case LiteralKind.String: return "String"
@@ -34,6 +35,7 @@ export function dump(node: Node): string {
     switch (node.kind) {
         case NodeKind.Literal:
             switch (node.literal) {
+                case LiteralKind.Boolean: return `${node.value}`
                 case LiteralKind.Int: return `${node.value}`
                 case LiteralKind.Float: return `${node.value}`
                 case LiteralKind.String: return `"${node.value}"`

@@ -42,13 +42,23 @@ describe("integration tests", () => {
             in v
         `, `2`)
     })
+    it("can evaluate if function", () => {
+        ex(`
+            let
+                if = /(cond, then, else).match cond {
+                    true in then(),
+                    false in else()
+                },
+                eq = /(a, b).match a {
+                    (b) in true,
+                    _ in false
+                },
+                t = /(x).if(eq(x, 10), /().10, /().20),
+            in [t(10), t(1)]
+        `,
+        `[10, 20]`)
+    })
 })
-
-// function ex(text: string, result: string) {
-//     const exp = p(text)
-//     const r = evaluate(p(result))
-//     evx(exp, r)
-// }
 
 function ex(text: string, result: string) {
     const exp = p(text)

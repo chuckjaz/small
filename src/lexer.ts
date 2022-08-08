@@ -70,10 +70,12 @@ export class Lexer {
                     result = Token.Identifier
                     const ident = text.substring(this.start, i)
                     switch (ident) {
+                        case "false": result = Token.False; break
                         case "in": result = Token.In; break
                         case "let": result = Token.Let; break
                         case "match": result = Token.Match; break
                         case "null": result = Token.Null; break
+                        case "true": result = Token.True; break
                     }
                     this.value = ident
                     break

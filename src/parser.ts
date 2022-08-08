@@ -1,4 +1,4 @@
-import { Array, Binding, Expression, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, NodeLike, Pattern, Projection, Record, Reference, Variable } from "./ast";
+import { Array, Binding, Expression, Lambda, Let, LiteralBoolean, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, NodeLike, Pattern, Projection, Record, Reference, Variable } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
 
@@ -53,7 +53,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
 
         return left
     }
-   
+
     function expression(): Expression {
         let left = primary()
         return postfixExprPrefix[token] ? postfix(left) : left
@@ -100,6 +100,24 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
             kind: NodeKind.Literal,
             literal: LiteralKind.Null,
             value: null
+        }
+    }
+
+    function tru(): LiteralBoolean {
+        expect(Token.True)
+        return {
+            kind: NodeKind.Literal,
+            literal: LiteralKind.Boolean,
+            value: true
+        }
+    }
+
+    function fals(): LiteralBoolean {
+        expect(Token.False)
+        return {
+            kind: NodeKind.Literal,
+            literal: LiteralKind.Boolean,
+            value: false
         }
     }
 
@@ -158,7 +176,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
 
     function rec<T extends NodeLike, P extends NodeLike>(
         el: () => T,
-        p: () => P, 
+        p: () => P,
         defKind: NodeKind.Variable | NodeKind.Reference
     ): Record<Member<T> | Projection<P>> {
         expect(Token.LBrace)
@@ -273,6 +291,8 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
             case Token.Float: return float()
             case Token.String:  return str()
             case Token.Null: return nul()
+            case Token.False: return fals()
+            case Token.True: return tru()
             case Token.Lambda: return lambda()
             case Token.Let: return lt()
             case Token.Match: return match()
@@ -381,10 +401,12 @@ function tokenString(token: Token): string {
         case Token.RBrack: return "RBrack"
         case Token.LBrace: return "LBrace"
         case Token.RBrace: return "RBrace"
+        case Token.False: return "false"
         case Token.In: return "in"
         case Token.Let: return "let"
         case Token.Match: return "match"
         case Token.Null: return "null"
+        case Token.True: return "true"
         case Token.EOF: return "EOF"
         case Token.Error: return "Error"
     }
@@ -403,7 +425,8 @@ function setOr(...sets: boolean[][]): boolean[] {
 }
 
 const expressionPrefix = setOf(Token.Identifier, Token.Integer, Token.Float, Token.String,
-    Token.Lambda, Token.Let, Token.Match, Token.LParen, Token.LBrack, Token.LBrace)
+    Token.True, Token.False, Token.Null, Token.Lambda, Token.Let, Token.Match, Token.LParen,
+    Token.LBrack, Token.LBrace)
 
 const memberPrefix = setOf(Token.Identifier, Token.Project)
 const arrayValuePrefix = setOr(expressionPrefix, memberPrefix)

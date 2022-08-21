@@ -58,6 +58,69 @@ describe("integration tests", () => {
         `,
         `[10, 20]`)
     })
+    describe("quote and splice", () => {
+        it("can splice a quote", () => {
+            ex(`
+                $'42
+            `, `42`)
+        })
+        it("can splice a reference to a quote", () => {
+            ex(`
+                let
+                    x = '42
+                in
+                    $x
+            `, `42`)
+        })
+        it("can splice an array", () => {
+            ex(`
+                let
+                    x = '10,
+                    y = '20
+                in [$x, $y]
+            `,`[10 20]`)
+        })
+        it("can quote a call", () => {
+            ex(`
+                let
+                    eq = /(a,b).match a {
+                        (b) in true,
+                        _ in false
+                    },
+                    a = 1,
+                    b = 1
+                in
+                    $'eq(a,b)
+            `,`true`)
+        })
+        it("can pass quotes to a function", () => {
+            ex(`
+                let
+                    eq = /(a,b).match a {
+                        (b) in true,
+                        _ in false
+                    },
+                    if = /(cond, then, else).'(
+                        match $cond {
+                            true in $then,
+                            _ in $else
+                        }
+                    )
+                in $(if('true, '42, '43))
+            `,`42`)
+        })
+        describe("syntax matching", () => {
+            it("can match a literal", () => {
+                ex(`
+                    match 'true {
+                        'true in 42
+                        'false in 43
+                    }
+                `, `42`)
+
+            })
+        })
+    })
 })
 
 function ex(text: string, result: string) {

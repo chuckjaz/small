@@ -1,4 +1,4 @@
-import { Array, Binding, Expression, Lambda, Let, LiteralBoolean, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, NodeLike, Pattern, Projection, Record, Reference, Variable } from "./ast";
+import { Array, Binding, Expression, Lambda, Let, LiteralBoolean, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, NodeLike, Pattern, Projection, Quote, Record, Reference, Splice, Variable } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
 
@@ -284,6 +284,24 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         }
     }
 
+    function quote(): Quote {
+        expect(Token.Quote)
+        const target = primary()
+        return {
+            kind: NodeKind.Quote,
+            target
+        }
+    }
+
+    function splice(): Splice {
+        expect(Token.Dollar)
+        const target = primary()
+        return {
+            kind: NodeKind.Splice,
+            target
+        }
+    }
+
     function primary(): Expression {
         switch (token) {
             case Token.Identifier: return reference()
@@ -295,6 +313,8 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
             case Token.True: return tru()
             case Token.Lambda: return lambda()
             case Token.Let: return lt()
+            case Token.Quote: return quote()
+            case Token.Dollar: return splice()
             case Token.Match: return match()
             case Token.LBrack: return arr(expression, expression)
             case Token.LBrace: return rec(expression, expression, NodeKind.Reference)
@@ -401,6 +421,8 @@ function tokenString(token: Token): string {
         case Token.RBrack: return "RBrack"
         case Token.LBrace: return "LBrace"
         case Token.RBrace: return "RBrace"
+        case Token.Dollar: return "Dollar"
+        case Token.Quote: return "Quote"
         case Token.False: return "false"
         case Token.In: return "in"
         case Token.Let: return "let"
@@ -426,7 +448,7 @@ function setOr(...sets: boolean[][]): boolean[] {
 
 const expressionPrefix = setOf(Token.Identifier, Token.Integer, Token.Float, Token.String,
     Token.True, Token.False, Token.Null, Token.Lambda, Token.Let, Token.Match, Token.LParen,
-    Token.LBrack, Token.LBrace)
+    Token.LBrack, Token.LBrace, Token.Dollar, Token.Quote)
 
 const memberPrefix = setOf(Token.Identifier, Token.Project)
 const arrayValuePrefix = setOr(expressionPrefix, memberPrefix)

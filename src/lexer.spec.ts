@@ -47,6 +47,12 @@ describe("lexer", () => {
     it("can scan a equal", () => {
         l("=", Token.Equal)
     })
+    it("can scan a dollar", () => {
+        l("$", Token.Dollar)
+    })
+    it("can scan a quote", () => {
+        l("'", Token.Quote)
+    })
     it("can scan a project", () => {
         l("...", Token.Project)
     })
@@ -69,9 +75,9 @@ describe("lexer", () => {
         l("false", Token.False)
     })
     it("can scan adjacent tokens", () => {
-        l("abc(){}[].,:=/1.0", Token.Identifier, Token.LParen, Token.RParen, Token.LBrace,
+        l("abc(){}[].,:=/$'1.0", Token.Identifier, Token.LParen, Token.RParen, Token.LBrace,
             Token.RBrace, Token.LBrack, Token.RBrack, Token.Dot, Token.Comma, Token.Colon, 
-            Token.Equal, Token.Lambda, Token.Float)
+            Token.Equal, Token.Lambda, Token.Dollar, Token.Quote, Token.Float)
     })
 })
 

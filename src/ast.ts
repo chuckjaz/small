@@ -10,6 +10,8 @@ export const enum NodeKind {
     Array,
     Select,
     Index,
+    Quote,
+    Splice,
     Projection,
     Match,
     MatchClause,
@@ -123,6 +125,16 @@ export interface Index {
     index: Expression
 }
 
+export interface Quote {
+    kind: NodeKind.Quote
+    target: Expression
+}
+
+export interface Splice {
+    kind: NodeKind.Splice
+    target: Expression
+}
+
 export interface Projection<T extends NodeLike> {
     kind: NodeKind.Projection
     value: T
@@ -161,6 +173,8 @@ export type Expression =
     Record<Member<Expression> | Projection<Expression>> |
     Select |
     Index |
+    Quote |
+    Splice |
     Match
 
 export type Node =

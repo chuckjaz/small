@@ -16,6 +16,8 @@ export const enum Token {
     RBrack,
     LBrace,
     RBrace,
+    Dollar,
+    Quote,
 
     False,
     In,

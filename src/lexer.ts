@@ -159,6 +159,12 @@ export class Lexer {
                 case "=":
                     result = Token.Equal
                     break
+                case "$":
+                    result = Token.Dollar
+                    break
+                case "'":
+                    result = Token.Quote
+                    break
             }
             break
         }

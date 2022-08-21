@@ -13,6 +13,8 @@ export function nodeKindString(kind: NodeKind): string {
         case NodeKind.Array: return "Array"
         case NodeKind.Select: return "Select"
         case NodeKind.Index: return "Index"
+        case NodeKind.Quote: return "Quote"
+        case NodeKind.Splice: return "Splice"
         case NodeKind.Projection: return "Projection"
         case NodeKind.Match: return "Match"
         case NodeKind.MatchClause: return "MatchClause"
@@ -52,6 +54,8 @@ export function dump(node: Node): string {
         case NodeKind.Index: return `${dump(node.target)}[${dump(node.index)}]`
         case NodeKind.Member: return `${node.name}: ${dump(node.value)}`
         case NodeKind.Projection: return `...${dump(node.value)}`
+        case NodeKind.Quote: return `'${dump(node.target)}`
+        case NodeKind.Splice: return `$${dump(node.target)}`
         case NodeKind.Match: return `match { ${node.clauses.map(dump).join(", ")} }`
         case NodeKind.MatchClause: return `${dump(node.pattern)} in ${dump(node.value)}`
         case NodeKind.Pattern: return `P${dump(node.pattern)}`

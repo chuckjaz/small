@@ -2,7 +2,7 @@ import {
     Array, Binding, Call, Expression, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, Match, MatchClause, Member,  NodeKind, Pattern, Projection, Record, Reference, Select, Variable
 } from "./ast"
 import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf } from "./eval"
-import { dumpBound } from "./value-string"
+import { valueToString } from "./value-string"
 
 describe("eval", () => {
     it("can evaluate an int literal", () => {
@@ -381,6 +381,6 @@ function v(name: string): Variable {
 export function evbx(value: Expression, expected: Value) {
     const result = evaluate(value)
     if (!valueEquals(result, expected)) {
-        throw new Error(`Expected ${dumpBound(result)}, to equal ${dumpBound(expected)}`)
+        throw new Error(`Expected ${valueToString(result)}, to equal ${valueToString(expected)}`)
     }
 }

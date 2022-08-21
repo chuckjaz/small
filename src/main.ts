@@ -4,7 +4,7 @@ import { evaluate, Value } from "./eval";
 import { Flags } from "./flags";
 
 import * as fs from 'fs'
-import { dumpBound } from "./value-string";
+import { valueToString } from "./value-string";
 
 export function run(filename: string): Value {
     const text = readFile(filename)
@@ -35,7 +35,7 @@ if (flags.args.length != 1) {
 
 try {
     const result = run(flags.args[0])
-    console.log(dumpBound(result))
+    console.log(valueToString(result))
 } catch (e: any) {
     if ('line' in e) {
         console.log(e.message)

@@ -141,13 +141,16 @@ interface ContextBinding {
 }
 
 interface BindingContext {
-    level: number
     find(name: string): ContextBinding | undefined
+    quoteFind(name: string): ContextBinding | undefined
+    spliceQuoteContext: boolean
 }
 
-const emptyContext = {
-    level: -1,
-    find(name: string) { return undefined }
+const emptyContext: BindingContext = {
+    find(name: string) { return undefined },
+    quoteFind(name: string) { return undefined },
+    spliceQuoteContext: false
+
 }
 
 const symbols = new Map<string, number>()
@@ -191,7 +194,6 @@ function bind(node: Expression): BoundExpression {
             case NodeKind.Let: {
                 const indexes = new Map<string, number>()
                 let index = 0
-                let level = context.level + 1
                 for (const binding of node.bindings) {
                     const name = binding.name
                     if (indexes.has(name)) {
@@ -209,7 +211,6 @@ function bind(node: Expression): BoundExpression {
                 }
             }
             case NodeKind.Lambda: {
-                let level = context.level + 1
                 const indexes = node.parameters.reduce((map, name, index) => (map.set(name, index), map), new Map<string, number>())
                 const lambdaContext = contextOf(context, indexes)
                 const body = b(lambdaContext, node.body)
@@ -296,14 +297,16 @@ function bind(node: Expression): BoundExpression {
                 }
             }
             case NodeKind.Quote: {
-                const target = b(context, node.target)
+                const quoteContext = swapQuoteSpliceContext(context)
+                const target = b(quoteContext, node.target)
                 return {
                     kind: BoundKind.Quote,
                     target
                 }
             }
             case NodeKind.Splice: {
-                const target = b(context, node.target)
+                const spliceContext = swapQuoteSpliceContext(context)
+                const target = b(spliceContext, node.target)
                 return {
                     kind: BoundKind.Splice,
                     target
@@ -330,7 +333,6 @@ function bind(node: Expression): BoundExpression {
                         },
                         size(): number { return indexes.size },
                         context() {
-                            if (indexes.size == 0) return context
                             return contextOf(context, indexes)
                         }
                     }
@@ -520,7 +522,7 @@ export function valueEquals(a: Value, b: Value): boolean {
         case NodeKind.Quote: {
             const aTarget = a.target
             const bTarget = (b as QuoteValue).target
-            if (aTarget.kind == NodeKind.Literal && bTarget.kind == NodeKind.Literal) 
+            if (aTarget.kind == NodeKind.Literal && bTarget.kind == NodeKind.Literal)
                 return valueEquals(aTarget, bTarget)
         }
     }
@@ -533,10 +535,15 @@ function boundEvaluate(expression: BoundExpression): Value {
     function e(context: CallContext, node: BoundExpression): Value {
         switch (node.kind) {
             case NodeKind.Literal: return node
-            case BoundKind.Reference: return required((context[node.level] ?? [])[node.index])
+            case BoundKind.Reference: {
+                const result = (context[node.level] ?? [])[node.index]
+                if (result === undefined)
+                    error(`Internal error: unbound value ${node.name}`)
+                return result
+            }
             case BoundKind.Let: {
                 const bindings: Value[] = []
-                const letContext = [...context, bindings]
+                const letContext = [bindings, ...context]
                 for (const binding of node.bindings) {
                     bindings.push(e(letContext, binding))
                 }
@@ -548,7 +555,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                     error(`Incorrect number of arguments, expected ${target.arity}, received ${node.args.length}`)
                 }
                 const args = node.args.map(v => e(context, v))
-                const callContext = [...target.context, args]
+                const callContext = [args, ...target.context]
                 return e(callContext, target.body)
             }
             case BoundKind.Index: {
@@ -630,12 +637,13 @@ function boundEvaluate(expression: BoundExpression): Value {
                     body: node.body
                 }
             }
-            case BoundKind.Quote:
+            case BoundKind.Quote: {
                 return {
                     kind: NodeKind.Quote,
                     context,
                     target: quote(context, node.target)
                 }
+            }
             case BoundKind.Splice: {
                 const target = e(context, node.target)
                 switch (target.kind) {
@@ -650,7 +658,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 for (const clause of node.clauses) {
                     const file: Value[] = []
                     if (match(context, clause.pattern, target, file)) {
-                        const matchContext = [...context, file]
+                        const matchContext = [file, ...context]
                         return e(matchContext, clause.value)
                     }
                 }
@@ -730,7 +738,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                         // What about the quote's context?
                         return target.target
                     default:
-                        error("Can only splice a quote")
+                        error(`Can only splice a quote: ${valueToString(target)}`)
                 }
             }
             case BoundKind.Match: {
@@ -981,20 +989,25 @@ function boundEvaluate(expression: BoundExpression): Value {
 }
 
 function contextOf(parent: BindingContext, indexes: Map<string, number>): BindingContext {
-    const level = parent.level + 1
-    return {
-        find(name: string): ContextBinding | undefined {
-            const index = indexes.get(name)
-            if (index !== undefined) {
-                return {
-                    level,
-                    index
-                }
+    const find = (name: string): ContextBinding | undefined => {
+        const index = indexes.get(name)
+        if (index !== undefined) {
+            return {
+                level: 0,
+                index
             }
-            return parent.find(name)
-        },
-        level
+        }
+        const prevLevel = parent.find(name)
+        if (prevLevel) prevLevel.level++
+        return prevLevel
     }
+    const spliceQuoteContext = parent.spliceQuoteContext
+    const quoteFind = spliceQuoteContext ? parent.quoteFind : find
+    return { find, quoteFind, spliceQuoteContext }
+}
+
+function swapQuoteSpliceContext(parent: BindingContext): BindingContext {
+    return { find: parent.quoteFind, quoteFind: parent.find, spliceQuoteContext: true }
 }
 
 export function evaluate(expression: Expression): Value {

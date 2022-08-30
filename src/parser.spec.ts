@@ -1,4 +1,4 @@
-import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, Pattern, Projection, Record, Reference, Select, Variable } from "./ast"
+import { Array, Binding, Call, Expression, Index, Lambda, Let, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, Projection, Record, Reference, Select, Variable } from "./ast"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
 
@@ -106,10 +106,10 @@ describe("parser", () => {
             expect(p("match e {}")).toEqual(mtch(r("e")))
         })
         it("can parse a single match clause", () => {
-            expect(p("match e { a in b }")).toEqual(mtch(r("e"), cl(v("a"), r("b"))))
+            expect(p("match e { #a in b }")).toEqual(mtch(r("e"), cl(v("a"), r("b"))))
         })
         it("can parse multiple match clauses", () => {
-            expect(p("match e { a in b, c in d, e in f }")).toEqual(
+            expect(p("match e { #a in b, #c in d, #e in f }")).toEqual(
                 mtch(
                     r("e"),
                     cl(v("a"), r("b")),
@@ -187,14 +187,14 @@ function c(target: Expression, ...args: Expression[]): Call {
     }
 }
 
-function rec(...members: (Member<Expression> | Projection<Expression>)[]): Record<Member<Expression> | Projection<Expression>> {
+function rec(...members: (Member | Projection)[]): Record {
     return {
         kind: NodeKind.Record,
         members
     }
 }
 
-function m(name: string, value: Expression): Member<Expression> {
+function m(name: string, value: Expression): Member {
     return {
         kind: NodeKind.Member,
         name,
@@ -202,7 +202,7 @@ function m(name: string, value: Expression): Member<Expression> {
     }
 }
 
-function a(...values: (Expression | Projection<Expression>)[]): Array<Expression | Projection<Expression>> {
+function a(...values: (Expression | Projection)[]): Array {
     return {
         kind: NodeKind.Array,
         values
@@ -241,7 +241,7 @@ function b(name: string, value: Expression): Binding {
     }
 }
 
-function pr(value: Expression): Projection<Expression> {
+function pr(value: Expression): Projection {
     return {
         kind: NodeKind.Projection,
         value
@@ -256,7 +256,7 @@ function mtch(target: Expression, ...clauses: MatchClause[]): Match {
     }
 }
 
-function cl(pattern: Expression | Variable | Pattern, value: Expression): MatchClause {
+function cl(pattern: Expression, value: Expression): MatchClause {
     return {
         kind: NodeKind.MatchClause,
         pattern,

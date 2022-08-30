@@ -9,22 +9,22 @@ describe("integration tests", () => {
         ex("1", "1")
     })
     it("can evaluate a match", () => {
-        ex("match [1, 2, 3] { [_, ...t] in t }", "[2, 3]")
+        ex("match [1, 2, 3] { [#_, ...#t] in t }", "[2, 3]")
     })
     it("can match as a switch", () => {
-        ex(`match 1 { 1 in "one", 2 in "two", _ in "other" }`, `"one"`)
+        ex(`match 1 { 1 in "one", 2 in "two", #_ in "other" }`, `"one"`)
     })
     it("can destruction a record into an array", () => {
         ex(`
             match { x: 1, y: 2, z: 3 } {
-                { x, y, z } in [z, y, x]
+                { #x, #y, #z } in [z, y, x]
             }
         `, `[3, 2, 1]`)
     })
     it("can extract a member using match", () => {
         ex(`
             match { x: 1, y: 2, z: 3 } {
-                { x, ...rest } in rest
+                { #x, ...#rest } in rest
             }
         `, `{ y: 2, z: 3 }`)
     })
@@ -50,8 +50,8 @@ describe("integration tests", () => {
                     false in else()
                 },
                 eq = /(a, b).match a {
-                    (b) in true,
-                    _ in false
+                    b in true,
+                    #_ in false
                 },
                 t = /(x).if(eq(x, 10), /().10, /().20),
             in [t(10), t(1)]
@@ -85,7 +85,7 @@ describe("integration tests", () => {
                 let
                     eq = /(a,b).match a {
                         (b) in true,
-                        _ in false
+                        #_ in false
                     },
                     a = 1,
                     b = 1
@@ -97,13 +97,13 @@ describe("integration tests", () => {
             ex(`
                 let
                     eq = /(a,b).match a {
-                        (b) in true,
-                        _ in false
+                        b in true,
+                        #_ in false
                     },
                     if = /(cond, then, else).'(
                         match $cond {
                             true in $then,
-                            _ in $else
+                            #_ in $else
                         }
                     )
                 in $(if('true, '42, '43))

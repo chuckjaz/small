@@ -15,7 +15,6 @@ export const enum NodeKind {
     Projection,
     Match,
     MatchClause,
-    Pattern,
     Variable,
 }
 
@@ -97,20 +96,20 @@ export interface Call {
     args: Expression[]
 }
 
-export interface Record<M extends NodeLike> {
+export interface Record {
     kind: NodeKind.Record
-    members: M[]
+    members: (Member | Projection)[]
 }
 
-export interface Member<T extends NodeLike> {
+export interface Member {
     kind: NodeKind.Member
     name: string
-    value: T
+    value: Expression
 }
 
-export interface Array<T extends NodeLike> {
+export interface Array {
     kind: NodeKind.Array
-    values: T[]
+    values: (Expression | Projection)[]
 }
 
 export interface Select {
@@ -135,9 +134,9 @@ export interface Splice {
     target: Expression
 }
 
-export interface Projection<T extends NodeLike> {
+export interface Projection {
     kind: NodeKind.Projection
-    value: T
+    value: Expression
 }
 
 export interface Match {
@@ -148,7 +147,7 @@ export interface Match {
 
 export interface MatchClause {
     kind: NodeKind.MatchClause
-    pattern: Expression | Variable | Pattern
+    pattern: Expression
     value: Expression
 }
 
@@ -157,33 +156,24 @@ export interface Variable {
     name: string
 }
 
-export interface Pattern {
-    kind: NodeKind.Pattern
-    pattern: Array<Expression | Pattern | Variable | Projection<Pattern | Variable>> |
-        Record<Member<Expression |  Pattern | Variable> | Projection<Pattern | Variable>>
-}
-
 export type Expression =
     Literal |
     Reference |
     Let |
     Call |
     Lambda |
-    Array<Expression | Projection<Expression>> |
-    Record<Member<Expression> | Projection<Expression>> |
+    Array |
+    Record |
     Select |
     Index |
     Quote |
     Splice |
-    Match
+    Match |
+    Projection |
+    Variable
 
 export type Node =
     Expression |
     Binding |
-    Member<Expression | Pattern | Variable> |
-    Projection<Expression | Pattern | Variable> |
-    Array<Expression | Pattern | Variable | Projection<Pattern | Variable>> |
-    Record<Member<Expression |  Pattern | Variable> | Projection<Pattern | Variable>> |
-    MatchClause |
-    Pattern |
-    Variable
+    Member |
+    MatchClause

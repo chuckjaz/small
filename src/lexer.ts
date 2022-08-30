@@ -165,6 +165,9 @@ export class Lexer {
                 case "'":
                     result = Token.Quote
                     break
+                case "#":
+                    result = Token.Hash
+                    break
             }
             break
         }

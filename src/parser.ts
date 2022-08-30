@@ -1,4 +1,4 @@
-import { Array, Binding, Expression, Lambda, Let, LiteralBoolean, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, NodeLike, Pattern, Projection, Quote, Record, Reference, Splice, Variable } from "./ast";
+import { Array, Binding, Expression, Lambda, Let, LiteralBoolean, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, Projection, Quote, Record, Reference, Splice, Variable } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
 
@@ -174,15 +174,11 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         }
     }
 
-    function rec<T extends NodeLike, P extends NodeLike>(
-        el: () => T,
-        p: () => P,
-        defKind: NodeKind.Variable | NodeKind.Reference
-    ): Record<Member<T> | Projection<P>> {
+    function rec(): Record {
         expect(Token.LBrace)
-        const members: (Member<T> | Projection<P>)[] = []
+        const members: (Member | Projection)[] = []
         while (arrayValuePrefix[token]) {
-            members.push(member<T, P>(el, p, defKind))
+            members.push(member())
             if (token as Token == Token.Comma) next()
         }
         expect(Token.RBrace)
@@ -192,65 +188,72 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         }
     }
 
-    function member<T extends NodeLike, P extends NodeLike>(
-        el: () => T,
-        p: () => P,
-        defKind: NodeKind.Reference | NodeKind.Variable
-    ): Member<T> | Projection<P> {
-        if (token == Token.Project) {
-            next()
-            const value = p()
+    function vr(): Variable {
+        expect(Token.Hash)
+        const name = expectName()
+        return {
+            kind: NodeKind.Variable,
+            name
+        }
+    }
+
+    function project(): Projection {
+        expect(Token.Project)
+        const value = expression()
+        return {
+            kind: NodeKind.Projection,
+            value
+        }
+    }
+
+    function member(): Member | Projection {
+        function mem(name: string, value: Expression): Member {
             return {
-                kind: NodeKind.Projection,
+                kind: NodeKind.Member,
+                name,
                 value
             }
-        } else {
-            const name = expectName()
-            if (token == Token.Colon) {
+        }
+
+        switch (token) {
+            case Token.Project: {
                 next()
-                const value = el()
+                const value = expression()
                 return {
-                    kind: NodeKind.Member,
-                    name,
+                    kind: NodeKind.Projection,
                     value
                 }
-            } else {
-                return {
-                    kind: NodeKind.Member,
-                    name,
-                    value: {
-                        kind: defKind,
+            }
+            case Token.Hash: {
+                next()
+                const name = expectName()
+                const value: Variable = {
+                    kind: NodeKind.Variable,
+                    name
+                }
+                return mem(name, value)
+            }
+            default: {
+                const name = expectName()
+                if (token as any == Token.Colon) {
+                    next()
+                    return mem(name, expression())
+                } else {
+                    const value: Reference = {
+                        kind: NodeKind.Reference,
                         name
-                    } as any
+                    }
+                    return mem(name, value)
                 }
             }
         }
     }
 
-    function element<T extends NodeLike, P extends NodeLike>(
-        el: () => T,
-        p: () => P
-    ): T | Projection<P> {
-        if (token == Token.Project) {
-            next()
-            const value = p()
-            return {
-                kind: NodeKind.Projection,
-                value
-            }
-        } else {
-            return el()
-        }
-    }
-
-    function arr<T extends NodeLike, P extends NodeLike>(
-        el: () => T,
-        p: () => P
-    ): Array<T | Projection<P>> {
+    function arr(): Array {
         expect(Token.LBrack)
-        const values: (T | Projection<P>)[] = []
+        const values: (Expression | Projection)[] = []
         while (arrayValuePrefix[token]) {
-            values.push(element(el, p))
+            values.push(expression())
             if (token == Token.Comma) next()
         }
         expect(Token.RBrack)
@@ -266,7 +269,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         expect(Token.LBrace)
         const clauses: MatchClause[] = []
         while (expressionPrefix[token]) {
-            const pattern = matchPattern()
+            const pattern = expression()
             expect(Token.In)
             const value = expression()
             clauses.push({
@@ -316,8 +319,10 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
             case Token.Quote: return quote()
             case Token.Dollar: return splice()
             case Token.Match: return match()
-            case Token.LBrack: return arr(expression, expression)
-            case Token.LBrace: return rec(expression, expression, NodeKind.Reference)
+            case Token.LBrack: return arr()
+            case Token.LBrace: return rec()
+            case Token.Hash: return vr()
+            case Token.Project: return project()
             case Token.LParen: {
                 next()
                 const result = expression()
@@ -333,49 +338,6 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         return {
             kind: NodeKind.Variable,
             name
-        }
-    }
-
-    function matchVariableOrPattern(): Pattern | Variable {
-        switch (token) {
-            case Token.Identifier: return variable()
-            case Token.LBrace: return matchPatternRecord()
-            case Token.LBrack: return matchPatternArray()
-            default: error("Expected an identifier")
-        }
-    }
-
-    function matchPattern(): Expression | Pattern | Variable {
-        switch(token) {
-            case Token.Identifier: {
-                const name = expectName()
-                return postfixExprPrefix[token] ? postfix({
-                        kind: NodeKind.Reference,
-                        name
-                    }) : {
-                        kind: NodeKind.Variable,
-                        name
-                    }
-            }
-            case Token.LBrack:
-            case Token.LBrace:
-                return matchVariableOrPattern()
-            default:
-                return expression()
-        }
-    }
-
-    function matchPatternRecord(): Pattern {
-        return {
-            kind: NodeKind.Pattern,
-            pattern: rec(matchPattern, matchVariableOrPattern, NodeKind.Variable)
-        }
-    }
-
-    function matchPatternArray(): Pattern {
-        return {
-            kind: NodeKind.Pattern,
-            pattern: arr(matchPattern, matchVariableOrPattern)
         }
     }
 
@@ -423,6 +385,7 @@ function tokenString(token: Token): string {
         case Token.RBrace: return "RBrace"
         case Token.Dollar: return "Dollar"
         case Token.Quote: return "Quote"
+        case Token.Hash: return "Hash"
         case Token.False: return "false"
         case Token.In: return "in"
         case Token.Let: return "let"
@@ -448,8 +411,8 @@ function setOr(...sets: boolean[][]): boolean[] {
 
 const expressionPrefix = setOf(Token.Identifier, Token.Integer, Token.Float, Token.String,
     Token.True, Token.False, Token.Null, Token.Lambda, Token.Let, Token.Match, Token.LParen,
-    Token.LBrack, Token.LBrace, Token.Dollar, Token.Quote)
+    Token.LBrack, Token.LBrace, Token.Dollar, Token.Quote, Token.Project, Token.Hash)
 
-const memberPrefix = setOf(Token.Identifier, Token.Project)
+const memberPrefix = setOf(Token.Hash, Token.Identifier, Token.Project)
 const arrayValuePrefix = setOr(expressionPrefix, memberPrefix)
 const postfixExprPrefix = setOf(Token.Dot, Token.LBrack, Token.LParen)

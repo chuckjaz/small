@@ -18,6 +18,7 @@ export const enum Token {
     RBrace,
     Dollar,
     Quote,
+    Hash,
 
     False,
     In,

@@ -1,5 +1,5 @@
 import {
-    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, Match, MatchClause, Member,  NodeKind, Pattern, Projection, Record, Reference, Select, Variable
+    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, Match, MatchClause, Member,  NodeKind, Projection, Record, Reference, Select, Variable
 } from "./ast"
 import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf } from "./eval"
 import { valueToString } from "./value-string"
@@ -112,14 +112,14 @@ describe("eval", () => {
         it("can match to an array", () => {
             const expr = mtch(
                 a(i(1), i(2)),
-                cl(ap(i(1), i(2)), i(3))
+                cl(a(i(1), i(2)), i(3))
             )
             evbx(expr, i(3))
         })
         it("can match variables in an array", () => {
             const expr = mtch(
                 a(i(1), i(2), i(3)),
-                cl(ap(v("a"), v("b"), v("c")), a(r("c"), r("b"), r("a")))
+                cl(a(v("a"), v("b"), v("c")), a(r("c"), r("b"), r("a")))
             )
             evbx(expr, bav(i(3), i(2), i(1)))
         })
@@ -130,9 +130,9 @@ describe("eval", () => {
                     m("y", i(2))
                 ),
                 cl(
-                    rp(
-                        mp("x", v("x")),
-                        mp("y", v("y"))
+                    rec(
+                        m("x", v("x")),
+                        m("y", v("y"))
                     ),
                     a(r("x"), r("y"))
                 )
@@ -144,7 +144,7 @@ describe("eval", () => {
                 const expr = mtch(
                     a(i(1), i(2), i(3)),
                     cl(
-                        ap(i(1), pp(v("x"))),
+                        a(i(1), pr(v("x"))),
                         r("x")
                     )
                 )
@@ -154,7 +154,7 @@ describe("eval", () => {
                 const expr = mtch(
                     a(i(1), i(2), i(3)),
                     cl(
-                        ap(pp(v("x")), i(3)),
+                        a(pr(v("x")), i(3)),
                         r("x")
                     )
                 )
@@ -164,7 +164,7 @@ describe("eval", () => {
                 const expr = mtch(
                     a(i(1), i(2), i(3)),
                     cl(
-                        ap(i(1), pp(v("x")), i(3)),
+                        a(i(1), pr(v("x")), i(3)),
                         r("x")
                     )
                 )
@@ -178,9 +178,9 @@ describe("eval", () => {
                         m("z", i(3))
                     ),
                     cl(
-                        rp(
-                            mp("x", v("x")),
-                            pp(v("rest"))
+                        rec(
+                            m("x", v("x")),
+                            pr(v("rest"))
                         ),
                         a(r("x"), r("rest"))
                     )
@@ -207,7 +207,7 @@ function bool(value: boolean): LiteralBoolean {
     }
 }
 
-function a(...values: (Expression | Projection<Expression>)[]): Array<Expression | Projection<Expression>> {
+function a(...values: (Expression | Projection)[]): Array {
     return {
         kind: NodeKind.Array,
         values
@@ -245,14 +245,14 @@ function r(name: string): Reference {
     }
 }
 
-function rec(...members: (Member<Expression> | Projection<Expression>)[]): Record<Member<Expression> | Projection<Expression>> {
+function rec(...members: (Member | Projection)[]): Record {
     return {
         kind: NodeKind.Record,
         members
     }
 }
 
-function m(name: string, value: Expression): Member<Expression> {
+function m(name: string, value: Expression): Member {
     return {
         kind: NodeKind.Member,
         name,
@@ -284,7 +284,7 @@ function b(name: string, value: Expression): Binding {
     }
 }
 
-function pr(value: Expression): Projection<Expression> {
+function pr(value: Expression): Projection {
     return {
         kind: NodeKind.Projection,
         value
@@ -299,7 +299,7 @@ function mtch(target: Expression, ...clauses: MatchClause[]): Match {
     }
 }
 
-function cl(pattern: Expression | Variable | Pattern, value: Expression): MatchClause {
+function cl(pattern: Expression, value: Expression): MatchClause {
     return {
         kind: NodeKind.MatchClause,
         pattern,
@@ -307,7 +307,12 @@ function cl(pattern: Expression | Variable | Pattern, value: Expression): MatchC
     }
 }
 
-function brv(...members: Member<Value>[]): RecordValue {
+interface ValueMember {
+    name: string
+    value: Value
+}
+
+function brv(...members: ValueMember[]): RecordValue {
     const cls: number[] = []
     const values: Value[] = []
     for (const member of members) {
@@ -321,9 +326,8 @@ function brv(...members: Member<Value>[]): RecordValue {
     }
 }
 
-function bmv(name: string, value: Value): Member<Value> {
+function bmv(name: string, value: Value): ValueMember {
     return {
-        kind: NodeKind.Member,
         name,
         value
     }
@@ -333,41 +337,6 @@ function bav(...values: Value[]): ArrayValue {
     return {
         kind: NodeKind.Array,
         values
-    }
-}
-
-function rp(...members: (Member<Expression | Variable | Pattern> | Projection<Variable | Pattern>)[]): Pattern {
-    return {
-        kind: NodeKind.Pattern,
-        pattern: {
-            kind: NodeKind.Record,
-            members
-        }
-    }
-}
-
-function mp(name: string, value: Expression | Variable | Pattern): Member<Expression | Variable | Pattern> {
-    return {
-        kind: NodeKind.Member,
-        name,
-        value
-    }
-}
-
-function ap(...values: (Expression | Variable | Pattern | Projection<Variable | Pattern>)[]): Pattern {
-    return {
-        kind: NodeKind.Pattern,
-        pattern: {
-            kind: NodeKind.Array,
-            values
-        }
-    }
-}
-
-function pp(value: Pattern | Variable): Projection<Pattern | Variable> {
-    return {
-        kind: NodeKind.Projection,
-        value
     }
 }
 

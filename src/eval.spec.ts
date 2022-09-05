@@ -1,5 +1,5 @@
 import {
-    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, LiteralString, Match, MatchClause, Member,  NodeKind, Projection, Record, Reference, Select, Variable
+    Array, Binding, Call, Expression, Import, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, LiteralString, Match, MatchClause, Member,  NodeKind, Projection, Record, Reference, Select, Variable
 } from "./ast"
 import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf } from "./eval"
 import { valueToString } from "./value-string"
@@ -189,27 +189,37 @@ describe("eval", () => {
             })
         })
     })
-    describe("intrinsics", () => {
+    describe("imports", () => {
+        function im(body: Expression): Expression {
+            return lt(body,
+                b("iadd", imp("int.add")),
+                b("isub", imp("int.sub")),
+                b("imul", imp("int.mul")),
+                b("idiv", imp("int.div")),
+                b("iless", imp("int.less")),
+                b("len", imp("array.len"))
+            )
+        }
         it("can add two integers", () => {
-            evbx(c(r("iadd"), i(21), i(21)), i(21 + 21))
+            evbx(im(c(r("iadd"), i(21), i(21))), i(21 + 21))
         })
         it("can substract two integers", () => {
-            evbx(c(r("isub"), i(52), i(10)), i(52 - 10))
+            evbx(im(c(r("isub"), i(52), i(10))), i(52 - 10))
         })
         it("can multiply two integers", () => {
-            evbx(c(r("imul"), i(6), i(7)), i(6 * 7))
+            evbx(im(c(r("imul"), i(6), i(7))), i(6 * 7))
         })
         it("can divide two integers", () => {
-            evbx(c(r("idiv"), i(84), i(2)), i(84 / 2))
+            evbx(im(c(r("idiv"), i(84), i(2))), i(84 / 2))
         })
         it("can compare two integers", () => {
-            evbx(c(r("iless"), i(23), i(42)), bool(23 < 42))
+            evbx(im(c(r("iless"), i(23), i(42))), bool(23 < 42))
         })
         it("can get the length of a string", () => {
-            evbx(c(r("len"), str("Value")), i(5))
+            evbx(im(c(r("len"), str("Value"))), i(5))
         })
         it("can get the length of an array", () => {
-            evbx(c(r("len"), a(i(0), i(1), i(2))), i(3))
+            evbx(im(c(r("len"), a(i(0), i(1), i(2)))), i(3))
         })
     })
 })
@@ -218,14 +228,6 @@ function i(value: number): LiteralInt {
     return {
         kind: NodeKind.Literal,
         literal: LiteralKind.Int,
-        value
-    }
-}
-
-function str(value: string): LiteralString {
-    return {
-        kind: NodeKind.Literal,
-        literal: LiteralKind.String,
         value
     }
 }
@@ -242,6 +244,13 @@ function a(...values: (Expression | Projection)[]): Array {
     return {
         kind: NodeKind.Array,
         values
+    }
+}
+
+function imp(name: string): Import {
+    return {
+        kind: NodeKind.Import,
+        name
     }
 }
 
@@ -379,8 +388,67 @@ function v(name: string): Variable {
 }
 
 export function evbx(value: Expression, expected: Value) {
-    const result = evaluate(value)
+    const result = evaluate(value, simpleImports)
     if (!valueEquals(result, expected)) {
         throw new Error(`Expected ${valueToString(result)}, to equal ${valueToString(expected)}`)
+    }
+}
+
+function error(message: string): never {
+    throw Error(message)
+}
+
+function toInt(value: Value): number {
+    if (value && value.kind == NodeKind.Literal && value.literal == LiteralKind.Int) {
+        return value.value
+    }
+    error("Required an integer")
+}
+
+function toIntU(value: Value | undefined): number | undefined {
+    return value === undefined ? undefined : toInt(value)
+}
+
+function toLengthable(value: Value): { length: number } {
+    if (value) {
+        switch (value.kind) {
+            case NodeKind.Literal:
+                if (value.literal == LiteralKind.String) return value.value
+                break
+            case NodeKind.Array:
+                return value.values
+        }
+    }
+    error("Require an array or string")
+}
+
+function toString(value: Value): string {
+    if (value && value.kind == NodeKind.Literal && value.literal == LiteralKind.String) {
+        return value.value
+    }
+    error("Required a string")
+}
+
+function str(value: string): LiteralString {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.String,
+        value
+    }
+}
+
+export function simpleImports(name: string): (file: Value[]) => Value {
+    switch (name) {
+        case "int.add": return ([left, right]) => i(toInt(left) + toInt(right))
+        case "int.sub": return ([left, right]) => i(toInt(left) - toInt(right))
+        case "int.mul": return ([left, right]) => i(toInt(left) * toInt(right))
+        case "int.div": return ([left, right]) => i(toInt(left) / toInt(right))
+        case "int.less": return ([left, right]) => bool(toInt(left) < toInt(right))
+        case "array.len":
+        case "string.len": return ([target]) => i(toLengthable(target).length)
+        case "string.concat": return file => str(file.map(toString).join(""))
+        case "string.less": return ([left, right]) => bool(toString(left) < toString(right))
+        case "string.sub": return ([s, start, end]) => str(toString(s).substring(toInt(start), toIntU(end)))
+        default: error(`Could not import '${name}'`)
     }
 }

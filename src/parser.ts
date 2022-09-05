@@ -1,4 +1,5 @@
-import { Array, Binding, Expression, Lambda, Let, LiteralBoolean, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, Projection, Quote, Record, Reference, Splice, Variable } from "./ast";
+import { notEqual } from "assert";
+import { Array, Binding, Expression, Import, Lambda, Let, LiteralBoolean, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, Projection, Quote, Record, Reference, Splice, Variable } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
 
@@ -59,8 +60,16 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         return postfixExprPrefix[token] ? postfix(left) : left
     }
 
-    function reference(): Reference {
+    function referenceOrImport(): Reference | Import {
         const name = expectName()
+        if (name == "import" && token == Token.String) {
+            const name: string = lexer.value
+            next()
+            return {
+                kind: NodeKind.Import,
+                name
+            }
+        }
         return {
             kind: NodeKind.Reference,
             name
@@ -307,7 +316,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
 
     function primary(): Expression {
         switch (token) {
-            case Token.Identifier: return reference()
+            case Token.Identifier: return referenceOrImport()
             case Token.Integer: return int()
             case Token.Float: return float()
             case Token.String:  return str()

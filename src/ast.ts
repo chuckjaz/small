@@ -3,6 +3,7 @@ export const enum NodeKind {
     Reference,
     Let,
     Binding,
+    Import,
     Lambda,
     Call,
     Record,
@@ -84,6 +85,11 @@ export interface Binding {
     value: Expression
 }
 
+export interface Import {
+    kind: NodeKind.Import
+    name: string
+}
+
 export interface Lambda {
     kind: NodeKind.Lambda
     parameters: string[]
@@ -160,6 +166,7 @@ export type Expression =
     Literal |
     Reference |
     Let |
+    Import |
     Call |
     Lambda |
     Array |

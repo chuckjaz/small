@@ -58,6 +58,14 @@ describe("integration tests", () => {
         `,
         `[10, 20]`)
     })
+    describe("intrinsics", () => {
+        it("can add", () => {
+            ex(`iadd(21, 21)`, `42`)
+        })
+        it("can substract", () => {
+            ex(`isub(52, 10)`, `42`)
+        })
+    })
     describe("quote and splice", () => {
         it("can splice a quote", () => {
             ex(`

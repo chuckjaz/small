@@ -15,7 +15,7 @@ const enum BoundKind {
     Splice,
     Match,
     MatchClause,
-    Variable,
+    Variable
 }
 
 interface BoundReference {
@@ -162,7 +162,7 @@ export function nameOfSymbol(symbol: number): string {
 
 function bind(node: Expression): BoundExpression {
 
-    return b(emptyContext, node)
+    return b(intrinsicContext(emptyContext), node)
 
     function b(context: BindingContext, node: Expression): BoundExpression {
         switch (node.kind) {
@@ -349,7 +349,8 @@ export type Value =
     RecordValue |
     ArrayValue |
     QuoteValue |
-    LambdaValue
+    LambdaValue |
+    Intrinsic
 
 export interface ArrayValue {
     kind: NodeKind.Array
@@ -372,6 +373,11 @@ export interface LambdaValue {
     context: CallContext
     arity: number
     body: BoundExpression
+}
+
+export interface Intrinsic {
+    kind: NodeKind.Binding
+    intrinsic: (file: Value[]) => Value
 }
 
 export function valueEquals(a: Value, b: Value): boolean {
@@ -416,7 +422,7 @@ export function valueEquals(a: Value, b: Value): boolean {
 }
 
 function boundEvaluate(expression: BoundExpression): Value {
-    return e([], expression)
+    return e([intrinsics], expression)
 
     function e(context: CallContext, node: BoundExpression): Value {
         switch (node.kind) {
@@ -440,13 +446,20 @@ function boundEvaluate(expression: BoundExpression): Value {
                 return e(letContext, node.body)
             }
             case BoundKind.Call: {
-                const target = lambda(e(context, node.target))
-                if (target.arity != node.args.length) {
-                    error(`Incorrect number of arguments, expected ${target.arity}, received ${node.args.length}`)
-                }
+                const target = e(context, node.target)
                 const args = node.args.map(v => e(context, v))
-                const callContext = [args, ...target.context]
-                return e(callContext, target.body)
+                switch (target.kind) {
+                    case NodeKind.Lambda:
+                        if (target.arity != node.args.length) {
+                            error(`Incorrect number of arguments, expected ${target.arity}, received ${node.args.length}`)
+                        }
+                        const callContext = [args, ...target.context]
+                        return e(callContext, target.body)
+                    case NodeKind.Binding:
+                        return target.intrinsic(args)
+                    default:
+                        error("Value cannot be called")
+                }
             }
             case BoundKind.Index: {
                 const target = e(context, node.target)
@@ -759,11 +772,6 @@ function boundEvaluate(expression: BoundExpression): Value {
         return node
     }
 
-    function lambda(node: Value): LambdaValue {
-        if (node.kind != NodeKind.Lambda) error("Value cannot be called")
-        return node
-    }
-
     function int(node: Value): LiteralInt {
         if (node.kind != NodeKind.Literal || node.literal != LiteralKind.Int) error("Expected an integer")
         return node
@@ -883,4 +891,69 @@ export function boundToString(node: BoundExpression): string {
     function boundClauseToString(node: BoundMatchClause): string {
         return `${boundToString(node.pattern)} in ${boundToString(node.value)}`
     }
+}
+
+function toInt(value: Value): number {
+    if (value && value.kind == NodeKind.Literal && value.literal == LiteralKind.Int) {
+        return value.value
+    }
+    error("Required an integer")
+}
+
+function toLengthable(value: Value): { length: number } {
+    if (value) {
+        switch (value.kind) {
+            case NodeKind.Literal:
+                if (value.literal == LiteralKind.String) return value.value
+                break
+            case NodeKind.Array:
+                return value.values
+        }
+    }
+    error("Require an array or string")
+}
+
+function int(value: number): Value {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.Int,
+        value
+    }
+}
+
+function bool(value: boolean): Value {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.Boolean,
+        value
+    }
+}
+
+const enum IntOp {
+    Add,
+    Subtract,
+    Multiple,
+    Divide,
+    Less
+}
+
+const intrinsics: Value[] = []
+
+function intrinsicContext(parent: BindingContext): BindingContext {
+    const map = new Map<string, number>()
+    function define(name: string, intrinsic: (file: Value[]) => Value) {
+        const index = intrinsics.length
+        intrinsics.push({
+            kind: NodeKind.Binding,
+            intrinsic
+        })
+        map.set(name, index)
+    }
+    define("iadd", ([left, right]) => int(toInt(left) + toInt(right)))
+    define("isub", ([left, right]) => int(toInt(left) - toInt(right)))
+    define("imul", ([left, right]) => int(toInt(left) * toInt(right)))
+    define("idiv", ([left, right]) => int(toInt(left) / toInt(right)))
+    define("iless", ([left, right]) => bool(toInt(left) < toInt(right)))
+    define("len", ([target]) => int(toLengthable(target).length))
+    return contextOf(parent, map)
 }

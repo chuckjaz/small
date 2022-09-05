@@ -1,5 +1,5 @@
 import {
-    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, Match, MatchClause, Member,  NodeKind, Projection, Record, Reference, Select, Variable
+    Array, Binding, Call, Expression, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, LiteralString, Match, MatchClause, Member,  NodeKind, Projection, Record, Reference, Select, Variable
 } from "./ast"
 import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf } from "./eval"
 import { valueToString } from "./value-string"
@@ -189,12 +189,43 @@ describe("eval", () => {
             })
         })
     })
+    describe("intrinsics", () => {
+        it("can add two integers", () => {
+            evbx(c(r("iadd"), i(21), i(21)), i(21 + 21))
+        })
+        it("can substract two integers", () => {
+            evbx(c(r("isub"), i(52), i(10)), i(52 - 10))
+        })
+        it("can multiply two integers", () => {
+            evbx(c(r("imul"), i(6), i(7)), i(6 * 7))
+        })
+        it("can divide two integers", () => {
+            evbx(c(r("idiv"), i(84), i(2)), i(84 / 2))
+        })
+        it("can compare two integers", () => {
+            evbx(c(r("iless"), i(23), i(42)), bool(23 < 42))
+        })
+        it("can get the length of a string", () => {
+            evbx(c(r("len"), str("Value")), i(5))
+        })
+        it("can get the length of an array", () => {
+            evbx(c(r("len"), a(i(0), i(1), i(2))), i(3))
+        })
+    })
 })
 
 function i(value: number): LiteralInt {
     return {
         kind: NodeKind.Literal,
         literal: LiteralKind.Int,
+        value
+    }
+}
+
+function str(value: string): LiteralString {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.String,
         value
     }
 }

@@ -441,9 +441,21 @@ export function valueEquals(a: Value, b: Value): boolean {
 }
 
 function boundEvaluate(expression: BoundExpression): Value {
-    return e([], expression)
+    return resolve(e([], expression))
 
-    function e(context: CallContext, node: BoundExpression): Value {
+    type Continue = () => Step
+    type Step = Value | Continue
+
+    function resolve(step: Step): Value {
+        while (true) {
+            switch (typeof step) {
+                case 'function': step = step(); break
+                default: return step as Value
+            }
+        }
+    }
+
+    function e(context: CallContext, node: BoundExpression): Step {
         switch (node.kind) {
             case NodeKind.Literal: return node
             case BoundKind.Reference: {
@@ -466,20 +478,20 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const bindings: Value[] = []
                 const letContext = [bindings, ...context]
                 for (const binding of node.bindings) {
-                    bindings.push(e(letContext, binding))
+                    bindings.push(resolve(e(letContext, binding)))
                 }
                 return e(letContext, node.body)
             }
             case BoundKind.Call: {
-                const target = e(context, node.target)
-                const args = node.args.map(v => e(context, v))
+                const target = resolve(e(context, node.target))
+                const args = node.args.map(v => resolve(e(context, v)))
                 switch (target.kind) {
                     case NodeKind.Lambda:
                         if (target.arity != node.args.length) {
                             error(`Incorrect number of arguments, expected ${target.arity}, received ${node.args.length}`)
                         }
                         const callContext = [args, ...target.context]
-                        return e(callContext, target.body)
+                        return () => e(callContext, target.body)
                     case NodeKind.Import:
                         return target.fun(args)
                     default:
@@ -487,8 +499,8 @@ function boundEvaluate(expression: BoundExpression): Value {
                 }
             }
             case BoundKind.Index: {
-                const target = e(context, node.target)
-                const index = int(e(context, node.index))
+                const target = resolve(e(context, node.target))
+                const index = int(resolve(e(context, node.index)))
                 switch (target.kind) {
                     case NodeKind.Array:
                         return idx(target.values, index.value)
@@ -502,7 +514,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 }
             }
             case BoundKind.Select: {
-                const target = record(e(context, node.target))
+                const target = record(resolve(e(context, node.target)))
                 const symbol = node.symbol
                 const index = target.cls[symbol]
                 if (index == undefined) {
@@ -515,12 +527,12 @@ function boundEvaluate(expression: BoundExpression): Value {
                 for (const value of node.values) {
                     switch (value.kind) {
                         case BoundKind.Projection: {
-                            const a = array(e(context, value.value))
+                            const a = array(resolve(e(context, value.value)))
                             values.push(...a.values)
                             break
                         }
                         default:
-                            values.push(e(context, value))
+                            values.push(resolve(e(context, value)))
                             break
                     }
                 }
@@ -535,7 +547,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 node.members.forEach((member, index) => {
                     switch (member.kind) {
                         case BoundKind.Projection:
-                            const r = record(e(context, member.value))
+                            const r = record(resolve(e(context, member.value)))
                             const symbols = classToSymbols(r.cls)
                             symbols.forEach((symbol, index) => {
                                 if (cls[symbol] == undefined) {
@@ -547,7 +559,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                         default:
                             const symbol = node.symbols[index]
                             cls[symbol] = values.length
-                            values.push(e(context, member))
+                            values.push(resolve(e(context, member)))
                             break
                     }
                 })
@@ -572,7 +584,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 }
             }
             case BoundKind.Splice: {
-                const target = e(context, node.target)
+                const target = resolve(e(context, node.target))
                 switch (target.kind) {
                     case NodeKind.Quote:
                         return e(context, target.target)
@@ -581,7 +593,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 }
             }
             case BoundKind.Match: {
-                const target = e(context, node.target)
+                const target = resolve(e(context, node.target))
                 for (const clause of node.clauses) {
                     const file: Value[] = []
                     if (match(context, clause.pattern, target, file)) {
@@ -668,7 +680,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 }
             }
             case BoundKind.Splice: {
-                const target = e(context, node.target)
+                const target = resolve(e(context, node.target))
                 switch (target.kind) {
                     case NodeKind.Quote:
                         return target.target
@@ -710,7 +722,7 @@ function boundEvaluate(expression: BoundExpression): Value {
             case BoundKind.Array:
                 return matchArrayPattern(pattern)
             default:
-                return valueEquals(e(context, pattern), value)
+                return valueEquals(resolve(e(context, pattern)), value)
         }
 
         function matchArrayPattern(pattern: BoundArray): boolean {

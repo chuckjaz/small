@@ -74,6 +74,20 @@ describe("integration tests", () => {
             })
         })
     })
+    describe("tail calls", () => {
+        it("can evaluate a deep recursive statement", () => {
+            ex(`
+                let
+                    isub = import "int.sub",
+                    rec = /x.match x {
+                        0 in 42,
+                        #_ in rec(isub(x, 1))
+                    }
+                in rec(10000)
+
+            `, `42`)
+        })
+    })
     describe("quote and splice", () => {
         it("can splice a quote", () => {
             ex(`

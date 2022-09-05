@@ -13,6 +13,6 @@ export function valueToString(value: Value): string {
             const symbols = classToSymbols(value.cls)
             return `{${value.values.map((v, i) => `${nameOfSymbol(symbols[i])}: ${valueToString(v)}`).join(", ")}}`
         }
-        case NodeKind.Binding: return `intrinsic`
+        case NodeKind.Import: return `import '${value.name}'`
     }
 }

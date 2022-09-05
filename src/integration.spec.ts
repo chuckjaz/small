@@ -1,6 +1,6 @@
 import { Expression } from "./ast"
 import { evaluate } from "./eval"
-import { evbx } from "./eval.spec"
+import { evbx, simpleImports } from "./eval.spec"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
 
@@ -58,12 +58,20 @@ describe("integration tests", () => {
         `,
         `[10, 20]`)
     })
-    describe("intrinsics", () => {
+    describe("imports", () => {
         it("can add", () => {
-            ex(`iadd(21, 21)`, `42`)
+            ex(`let iadd = import "int.add" in iadd(21, 21)`, `42`)
         })
         it("can substract", () => {
-            ex(`isub(52, 10)`, `42`)
+            ex(`let isub = import "int.sub" in isub(52, 10)`, `42`)
+        })
+        describe("strings", () => {
+            it("can concatenate strings", () => {
+                ex(`let concat = import "string.concat" in concat("a", "b", "c")`, `"abc"`)
+            })
+            it("can substr a string", () => {
+                ex(`let substr = import "string.sub" in substr("abc", 1)`, `"bc"`)
+            })
         })
     })
     describe("quote and splice", () => {
@@ -133,7 +141,7 @@ describe("integration tests", () => {
 
 function ex(text: string, result: string) {
     const exp = p(text)
-    const r = evaluate(p(result))
+    const r = evaluate(p(result), simpleImports)
     evbx(exp, r)
 }
 

@@ -100,7 +100,13 @@ export class Lexer {
                     result = isInt ? Token.Integer : Token.Float
                     break
                 }
-                case '"':
+                case '"': {
+                    let strValue = ""
+                    let last = this.start + 1
+                    function shift(i: number) {
+                        strValue = strValue + text.substring(last, i)
+                        last = i
+                    }
                     while (true) {
                         switch (text[i]) {
                             case '"':
@@ -112,15 +118,30 @@ export class Lexer {
                                 i--
                                 result = Token.Error
                                 break loop
+                            case "\\":
+                                shift(i - 1)
+                                switch (text[i + 1]) {
+                                    case "r": strValue += "\r"; break
+                                    case "n": strValue += "\n"; break
+                                    case "\"": strValue += "\""; break
+                                    case "t": strValue += "\t"; break
+                                    default: 
+                                        result = Token.Error
+                                        break loop
+                                }
+                                i += 2
+                                continue
                             default:
                                 i++
                                 continue     
                         }
                         break
                     }
-                    this.value = text.substring(this.start + 1, i - 1)
+                    shift(i - 1)
+                    this.value = strValue
                     result = Token.String
                     break
+                }
                 case ".":
                     if (text[i] == "." && text[i+1] == ".") {
                         i += 2

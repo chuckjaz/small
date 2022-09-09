@@ -35,7 +35,7 @@ interface BoundLet {
 interface BoundImport {
     kind: BoundKind.Import
     name: string
-    fun: (file: Value[]) => Value
+    value: Value
 }
 
 interface BoundLambda {
@@ -168,7 +168,7 @@ export function nameOfSymbol(symbol: number): string {
     return symbolNames[symbol] ?? `<unknown symbol ${symbol}>`
 }
 
-function bind(node: Expression, imports?: (name: string) => ((file: Value[]) => Value)): BoundExpression {
+function bind(node: Expression, imports?: (name: string) => Value): BoundExpression {
 
     return b(emptyContext, node)
 
@@ -211,12 +211,12 @@ function bind(node: Expression, imports?: (name: string) => ((file: Value[]) => 
             }
             case NodeKind.Import: {
                 const name = node.name
-                const fun = imports ? imports(name) : undefined
-                if (!fun) error(`Import '${name}' not found`)
+                const value = imports ? imports(name) : undefined
+                if (!value) error(`Import '${name}' not found`)
                 return {
                     kind: BoundKind.Import,
                     name,
-                    fun
+                    value
                 }
             }
             case NodeKind.Lambda: {
@@ -468,12 +468,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 error("Cannot project in this context")
             case BoundKind.Variable:
                 error("Internal error: invalid location for a variable")
-            case BoundKind.Import:
-                return {
-                    kind: NodeKind.Import,
-                    name: node.name,
-                    fun: node.fun
-                }
+            case BoundKind.Import: return node.value
             case BoundKind.Let: {
                 const bindings: Value[] = []
                 const letContext = [bindings, ...context]
@@ -891,7 +886,15 @@ function swapQuoteSpliceScope(parent: BindingContext): BindingContext {
     return { scope: parent.quoteScope, quoteScope: parent.scope, spliceQuoteContext: true }
 }
 
-export function evaluate(expression: Expression, imports?: (name: string) => ((file: Value[]) => Value)): Value {
+export function importedOf(name: string, fun: (file: Value[]) => Value): Imported {
+    return {
+        kind: NodeKind.Import,
+        name,
+        fun
+    }
+}
+
+export function evaluate(expression: Expression, imports?: (name: string) => Value): Value {
     const boundExpression = bind(expression, imports)
     return boundEvaluate(boundExpression)
 }
@@ -905,7 +908,6 @@ export function classToSymbols(cls: number[]): number[] {
 function error(message: string): never {
     throw Error(message)
 }
-
 
 export function boundToString(node: BoundExpression): string {
     switch (node.kind) {

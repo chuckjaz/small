@@ -1,0 +1,32 @@
+let
+    Token = {
+        Identifier: 0,
+        Integer: 1,
+        Float: 2,
+        String: 3,
+
+        Lambda: 4,
+        Dot: 5,
+        Comma: 6,
+        Colon: 7,
+        Equal: 8,
+        Project: 9,
+        LParen: 10,
+        RParen: 11,
+        LBrack: 12,
+        RBrack: 13,
+        LBrace: 14,
+        RBrace: 15,
+
+        True: 16,
+        False: 17,
+        In: 18,
+        Let: 19,
+        Match: 20,
+        Null: 21,
+
+        EOF: 22,
+        Error: 23,
+    },
+in
+    { Token }

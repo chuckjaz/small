@@ -1,7 +1,7 @@
 import {
     Array, Binding, Call, Expression, Import, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, LiteralString, Match, MatchClause, Member,  NodeKind, Projection, Record, Reference, Select, Variable
 } from "./ast"
-import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf } from "./eval"
+import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf, importedOf } from "./eval"
 import { valueToString } from "./value-string"
 
 describe("eval", () => {
@@ -437,18 +437,18 @@ function str(value: string): LiteralString {
     }
 }
 
-export function simpleImports(name: string): (file: Value[]) => Value {
+export function simpleImports(name: string): Value {
     switch (name) {
-        case "int.add": return ([left, right]) => i(toInt(left) + toInt(right))
-        case "int.sub": return ([left, right]) => i(toInt(left) - toInt(right))
-        case "int.mul": return ([left, right]) => i(toInt(left) * toInt(right))
-        case "int.div": return ([left, right]) => i(toInt(left) / toInt(right))
-        case "int.less": return ([left, right]) => bool(toInt(left) < toInt(right))
+        case "int.add": return importedOf("add", ([left, right]) => i(toInt(left) + toInt(right)))
+        case "int.sub": return importedOf("sub", ([left, right]) => i(toInt(left) - toInt(right)))
+        case "int.mul": return importedOf("mul", ([left, right]) => i(toInt(left) * toInt(right)))
+        case "int.div": return importedOf("div", ([left, right]) => i(toInt(left) / toInt(right)))
+        case "int.less": return importedOf("less", ([left, right]) => bool(toInt(left) < toInt(right)))
         case "array.len":
-        case "string.len": return ([target]) => i(toLengthable(target).length)
-        case "string.concat": return file => str(file.map(toString).join(""))
-        case "string.less": return ([left, right]) => bool(toString(left) < toString(right))
-        case "string.sub": return ([s, start, end]) => str(toString(s).substring(toInt(start), toIntU(end)))
+        case "string.len": return importedOf("len", ([target]) => i(toLengthable(target).length))
+        case "string.concat": return importedOf("concat", file => str(file.map(toString).join("")))
+        case "string.less": return importedOf("less", ([left, right]) => bool(toString(left) < toString(right)))
+        case "string.sub": return importedOf("sub", ([s, start, end]) => str(toString(s).substring(toInt(start), toIntU(end))))
         default: error(`Could not import '${name}'`)
     }
 }

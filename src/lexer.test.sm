@@ -1,0 +1,46 @@
+let
+    Lexer = import "lexer.sm".Lexer,
+    Token = import "token.sm".Token,
+    expect = /(text, expected).let 
+        next = /(lex).match lex.token {
+            Token.Error in [Token.Error],
+            Token.EOF in [],
+            #token in [[token, lex.value], ...next(lex.next())]
+        },
+        result = next(Lexer(text))
+    in match result {
+        expected in ["Passed", text],
+        #_ in ["Failed: Expected", expected, "Received", result]
+    }
+in [
+    expect("A B C", [[Token.Identifier, "A"], [Token.Identifier, "B"], [Token.Identifier, "C"]]),
+    expect("This is a test", [
+        [Token.Identifier, "This"],
+        [Token.Identifier, "is"],
+        [Token.Identifier, "a"],
+        [Token.Identifier, "test"],
+    ]),
+    expect("true false null match in let", [
+        [Token.True, "true"],
+        [Token.False, "false"],
+        [Token.Null, "null"],
+        [Token.Match, "match"],
+        [Token.In, "in"],
+        [Token.Let, "let"],
+    ]),
+    expect("1234", [[Token.Integer, 1234]]),
+    expect("/.,:=...()[]{}", [
+        [Token.Lambda, null],
+        [Token.Dot, null],
+        [Token.Comma, null],
+        [Token.Colon, null],
+        [Token.Equal, null],
+        [Token.Project, null],
+        [Token.LParen, null],
+        [Token.RParen, null],
+        [Token.LBrack, null],
+        [Token.RBrack, null],
+        [Token.LBrace, null],
+        [Token.RBrace, null]
+    ])
+]

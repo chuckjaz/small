@@ -1,16 +1,25 @@
 import { Lexer } from "./lexer";
 import { parse } from "./parser";
-import { evaluate, Value } from "./eval";
+import { evaluate, importedOf, Value } from "./eval";
 import { Flags } from "./flags";
 
 import * as fs from 'fs'
+import * as path from 'path'
 import { valueToString } from "./value-string";
+import { Expression, LiteralBoolean, LiteralInt, LiteralKind, LiteralString, NodeKind } from "./ast";
 
-export function run(filename: string): Value {
-    const text = readFile(filename)
+const modules = new Map<string, Value>()
+
+function p(text: string, fileName: string): Expression {
     const lexer = new Lexer(text)
-    const value = parse(lexer, filename)
-    const result = evaluate(value)
+    return parse(lexer, fileName)
+}
+
+export function run(fileName: string): Value {
+    const dirName = path.dirname(fileName)
+    const text = readFile(fileName)
+    const value = p(text, fileName)
+    const result = evaluate(value, (name) => imports(name, dirName))
     return result
 }
 
@@ -42,4 +51,94 @@ try {
     } else {
         throw e
     }
+}
+
+function error(message: string): never {
+    throw new Error(message)
+}
+
+type ImportedFuntion = (file: Value[]) => Value
+
+function intrinsicsOf(obj: { [name: string]: ImportedFuntion }): Value {
+    function intrinsicImport(name: string): Value {
+        const result = obj[name]
+        if (result == undefined) error(`Internal error: Unknown intrinsic '${name}'`)
+        return importedOf(name, result)
+    }
+
+    const names = Object.getOwnPropertyNames(obj)
+    const src = `let ${
+        names.map(name => `${name} = import "${name}"`).join(", ")
+    } in { ${names.join(", ")} }`
+    const expression = p(src, "<intrinsic>")
+    return evaluate(expression, intrinsicImport)
+}
+
+function incorrectValue(spec: string, value: Value): never {
+    error(`Required ${spec}, but received ${valueToString(value)}`)
+}
+
+function numberOf(value: Value): number {
+    if (value.kind == NodeKind.Literal && value.literal == LiteralKind.Int) return value.value
+    incorrectValue("an integer", value)
+}
+
+function numberOfU(value: Value | undefined): number | undefined {
+    if (value && value.kind == NodeKind.Literal && value.literal == LiteralKind.Int) return value.value
+    return undefined
+}
+
+function stringOf(value: Value): string {
+    if (value.kind == NodeKind.Literal && value.literal == LiteralKind.String) return value.value
+    incorrectValue("an string", value)
+}
+
+function bool(value: boolean): LiteralBoolean {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.Boolean,
+        value
+    }
+}
+
+function int(value: number): LiteralInt {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.Int,
+        value
+    }
+}
+
+function str(value: string): LiteralString {
+    return {
+        kind: NodeKind.Literal,
+        literal: LiteralKind.String,
+        value
+    }
+}
+
+function imports(name: string, relativeTo: string): Value {
+    const mod = modules.get(name)
+    if (mod !== undefined) return mod
+    switch (name) {
+        case "strings": return intrinsicsOf({
+            concat: file => str(file.map(stringOf).join("")),
+            sub: ([s, start, end]) => str(stringOf(s).substring(numberOf(start), numberOfU(end))),
+            len: ([s]) => int(stringOf(s).length),
+            code: ([s]) => int(stringOf(s).charCodeAt(0))
+        })
+        case "ints": return intrinsicsOf({
+            add: ([left, right]) => int(numberOf(left) + numberOf(right)),
+            sub: ([left, right]) => int(numberOf(left) - numberOf(right)),
+            mul: ([left, right]) => int(numberOf(left) * numberOf(right)),
+            div: ([left, right]) => int(numberOf(left) / numberOf(right)),
+            less: ([left, right]) => bool(numberOf(left) < numberOf(right))
+        })
+    }
+
+    const fileName = path.resolve(relativeTo, name)
+    if (fs.existsSync(fileName)) {
+        return run(fileName)
+    }
+    error(`Cannot find '${name}'`)
 }

@@ -1,4 +1,3 @@
-import { notEqual } from "assert";
 import { Array, Binding, Expression, Import, Lambda, Let, LiteralBoolean, LiteralFloat, LiteralInt, LiteralKind, LiteralNull, LiteralString, Match, MatchClause, Member, NodeKind, Projection, Quote, Record, Reference, Splice, Variable } from "./ast";
 import { Lexer } from "./lexer";
 import { Token } from "./token";
@@ -22,6 +21,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                     expect(Token.RParen)
                     left = {
                         kind: NodeKind.Call,
+                        start: left.start,
                         target: left,
                         args
                     }
@@ -32,6 +32,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                     const name = expectName()
                     left = {
                         kind: NodeKind.Select,
+                        start: left.start,
                         target: left,
                         name
                     }
@@ -43,6 +44,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                     expect(Token.RBrack)
                     left = {
                         kind: NodeKind.Index,
+                        start: left.start,
                         target: left,
                         index
                     }
@@ -61,76 +63,92 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
     }
 
     function referenceOrImport(): Reference | Import {
+        const start = lexer.position
         const name = expectName()
         if (name == "import" && token == Token.String) {
             const name: string = lexer.value
             next()
             return {
                 kind: NodeKind.Import,
+                start,
                 name
             }
         }
         return {
             kind: NodeKind.Reference,
+            start,
             name
         }
     }
 
     function int(): LiteralInt {
+        const start = lexer.position
         const value: number = expect(Token.Integer)
         return {
             kind: NodeKind.Literal,
+            start,
             literal: LiteralKind.Int,
             value
         }
     }
 
     function float(): LiteralFloat {
+        const start = lexer.position
         const value = expect(Token.Float)
         return {
             kind: NodeKind.Literal,
+            start,
             literal: LiteralKind.Float,
             value
         }
     }
 
     function str(): LiteralString {
+        const start = lexer.position
         const value: string = expect(Token.String)
         return {
             kind: NodeKind.Literal,
+            start,
             literal: LiteralKind.String,
             value
         }
     }
 
     function nul(): LiteralNull {
+        const start = lexer.position
         expect(Token.Null)
         return {
             kind: NodeKind.Literal,
+            start,
             literal: LiteralKind.Null,
             value: null
         }
     }
 
     function tru(): LiteralBoolean {
+        const start = lexer.position
         expect(Token.True)
         return {
             kind: NodeKind.Literal,
+            start,
             literal: LiteralKind.Boolean,
             value: true
         }
     }
 
     function fals(): LiteralBoolean {
+        const start = lexer.position
         expect(Token.False)
         return {
             kind: NodeKind.Literal,
+            start,
             literal: LiteralKind.Boolean,
             value: false
         }
     }
 
     function lambda(): Lambda {
+        const start = lexer.position
         expect(Token.Lambda)
         const parameters: string[] = []
         switch (token as Token) {
@@ -153,20 +171,24 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         const body = expression()
         return {
             kind: NodeKind.Lambda,
+            start,
             parameters,
             body
         }
     }
 
     function lt(): Let {
+        const start = lexer.position
         expect(Token.Let)
         const bindings: Binding[] = []
         while (token as any == Token.Identifier) {
+            const start = lexer.position
             const name = expectName()
             expect(Token.Equal)
             const value = expression()
             bindings.push({
                 kind: NodeKind.Binding,
+                start,
                 name,
                 value
             })
@@ -178,12 +200,14 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         const body = expression()
         return {
             kind: NodeKind.Let,
+            start,
             bindings,
             body
         }
     }
 
     function rec(): Record {
+        const start = lexer.position
         expect(Token.LBrace)
         const members: (Member | Projection)[] = []
         while (arrayValuePrefix[token]) {
@@ -193,32 +217,39 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         expect(Token.RBrace)
         return {
             kind: NodeKind.Record,
+            start,
             members
         }
     }
 
     function vr(): Variable {
+        const start = lexer.position
         expect(Token.Hash)
         const name = expectName()
         return {
             kind: NodeKind.Variable,
+            start,
             name
         }
     }
 
     function project(): Projection {
+        const start = lexer.position
         expect(Token.Project)
         const value = expression()
         return {
             kind: NodeKind.Projection,
+            start,
             value
         }
     }
 
     function member(): Member | Projection {
+        const start = lexer.position
         function mem(name: string, value: Expression): Member {
             return {
                 kind: NodeKind.Member,
+                start,
                 name,
                 value
             }
@@ -230,19 +261,23 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                 const value = expression()
                 return {
                     kind: NodeKind.Projection,
+                    start,
                     value
                 }
             }
             case Token.Hash: {
                 next()
+                const start = lexer.position
                 const name = expectName()
                 const value: Variable = {
                     kind: NodeKind.Variable,
+                    start,
                     name
                 }
                 return mem(name, value)
             }
-            default: {
+            default: {        
+                const start = lexer.position
                 const name = expectName()
                 if (token as any == Token.Colon) {
                     next()
@@ -250,6 +285,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                 } else {
                     const value: Reference = {
                         kind: NodeKind.Reference,
+                        start,
                         name
                     }
                     return mem(name, value)
@@ -259,6 +295,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
     }
 
     function arr(): Array {
+        const start = lexer.position
         expect(Token.LBrack)
         const values: (Expression | Projection)[] = []
         while (arrayValuePrefix[token]) {
@@ -268,21 +305,25 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         expect(Token.RBrack)
         return {
             kind: NodeKind.Array,
+            start,
             values
         }
     }
 
     function match(): Match {
+        const start = lexer.position
         expect(Token.Match)
         const target = expression()
         expect(Token.LBrace)
         const clauses: MatchClause[] = []
         while (expressionPrefix[token]) {
+            const start = lexer.position
             const pattern = expression()
             expect(Token.In)
             const value = expression()
             clauses.push({
                 kind: NodeKind.MatchClause,
+                start,
                 pattern,
                 value
             })
@@ -291,25 +332,30 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
         expect(Token.RBrace)
         return {
             kind: NodeKind.Match,
+            start,
             target,
             clauses
         }
     }
 
     function quote(): Quote {
+        const start = lexer.position
         expect(Token.Quote)
         const target = primary()
         return {
             kind: NodeKind.Quote,
+            start,
             target
         }
     }
 
     function splice(): Splice {
+        const start = lexer.position
         expect(Token.Dollar)
         const target = primary()
         return {
             kind: NodeKind.Splice,
+            start,
             target
         }
     }
@@ -343,9 +389,11 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
     }
 
     function variable(): Variable {
+        const start = lexer.position
         const name = expectName()
         return {
             kind: NodeKind.Variable,
+            start,
             name
         }
     }

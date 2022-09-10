@@ -1,8 +1,10 @@
-import { Expression } from "./ast"
+import { Expression, NodeKind } from "./ast"
 import { evaluate } from "./eval"
 import { evbx, simpleImports } from "./eval.spec"
+import { fileSetBuilder } from "./files"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
+import { valueToString } from "./value-string"
 
 describe("integration tests", () => {
     it("can evaluate a simple expression", () => {
@@ -30,7 +32,7 @@ describe("integration tests", () => {
     })
     it("can use an expression for a pattern", () => {
         ex(`
-            let 
+            let
               Enum = {
                 A: 1,
                 B: 2,
@@ -151,6 +153,63 @@ describe("integration tests", () => {
             })
         })
     })
+    describe("errors", () => {
+        it("reports an invalid projection", () => {
+            ee(`...1`, "Cannot project in this context")
+        })
+        it("reports incorrect number of arguments", () => {
+            ee(`
+                let
+                    a = /(x).x
+                in a()
+            `, 'Incorrect number of arguments, expected 1, received 0')
+        })
+        it("reports an invalid call", () => {
+            ee("1(2)", "Value cannot be called")
+        })
+        it("reports invalid us of index", () => {
+            ee("1[2]", "Value cannot be indexed")
+        })
+        it("reports member not found", () => {
+            ee("{ a: 1 }.b", 'Member "b" not found')
+        })
+        it("reports a splice error", () => {
+            ee("$1", "Can only splice a quote: 1")
+        })
+        it("reports a missing match", () => {
+            ee("match 1 { 0 in 1 }", "Match not found: 1 for match 1 { 0 in 1 }")
+        })
+        it("reports a splice error in a quote", () => {
+            ee("$'($1)", "Can only splice a quote: 1")
+        })
+        it("reports invalid array", () => {
+            ee("[...1]", "Expected an array")
+        })
+        it("reports invalid record", () => {
+            ee("{...1}", "Expected a record")
+        })
+        it("reports invalid index", () => {
+            ee('[1, 2]["a"]', "Expected an integer")
+        })
+        it("reports index out of bound", () => {
+            ee('[1][2]', "Index out of bound, 2 in 0..1")
+        })
+        it("reports a import not found", () => {
+            ee('import "z"', 'Could not import "z"')
+        })
+        it("can dump a stack trace", () => {
+            const result = es(`
+                let
+                    sub = import "int.sub",
+                    t = /x.match x {
+                        0 in 0[0],
+                        #_ in t(sub(x, 1))
+                    }
+                in t(10)
+            `)
+            expect(result).toEqual('Error <test>:5:30: Value cannot be indexed\n <test>:6:31')
+        })
+    })
 })
 
 function ex(text: string, result: string) {
@@ -163,4 +222,24 @@ function p(text: string): Expression {
     const lexer = new Lexer(text)
     const result = parse(lexer, "test")
     return result
+}
+
+function ee(text: string, message: string) {
+    const r = evaluate(p(text), simpleImports)
+    expect(r.kind).toBe(NodeKind.Error)
+    if (r.kind == NodeKind.Error) {
+        expect(r.message).toBe(message)
+    }
+}
+
+function es(text: string, fileName: string = '<test>'): string {
+    const setBuilder = fileSetBuilder()
+    const file = setBuilder.file(fileName, text.length)
+    const lexer = new Lexer(text, file)
+    const expression = parse(lexer, fileName)
+    file.build()
+    const value = evaluate(expression, simpleImports)
+    expect(value.kind).toBe(NodeKind.Error)
+    const set = setBuilder.build()
+    return valueToString(value, set)
 }

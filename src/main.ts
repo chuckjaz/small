@@ -7,20 +7,42 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { valueToString } from "./value-string";
 import { Expression, LiteralBoolean, LiteralInt, LiteralKind, LiteralString, NodeKind } from "./ast";
+import { fileSetBuilder, FileSetBuilder } from "./files";
 
 const modules = new Map<string, Value>()
+const setBuilder = fileSetBuilder()
 
 function p(text: string, fileName: string): Expression {
-    const lexer = new Lexer(text)
-    return parse(lexer, fileName)
+    const file = setBuilder.file(fileName, text.length)
+    const lexer = new Lexer(text, file)
+    const result = parse(lexer, fileName)
+    file.build()
+    return result
 }
 
 export function run(fileName: string): Value {
-    const dirName = path.dirname(fileName)
-    const text = readFile(fileName)
-    const value = p(text, fileName)
-    const result = evaluate(value, (name) => imports(name, dirName))
-    return result
+    try {
+        const dirName = path.dirname(fileName)
+        const text = readFile(fileName)
+        const value = p(text, fileName)
+        const result = evaluate(value, (name) => imports(name, dirName))
+        return result
+    } catch (e) {
+        if ('start' in (e as any)) {
+            const set = setBuilder.build()
+            const position = set.position(e as any)
+            if (position) {
+                console.log(`${position.display()}: ${(e as any).message}`)
+                return {
+                    kind: NodeKind.Literal,
+                    start: 0,
+                    literal: LiteralKind.Null,
+                    value: null
+                }
+            }
+        }
+        throw e
+    }
 }
 
 function readFile(sourceFileName: string): string {
@@ -96,6 +118,7 @@ function stringOf(value: Value): string {
 function bool(value: boolean): LiteralBoolean {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.Boolean,
         value
     }
@@ -104,6 +127,7 @@ function bool(value: boolean): LiteralBoolean {
 function int(value: number): LiteralInt {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.Int,
         value
     }
@@ -112,6 +136,7 @@ function int(value: number): LiteralInt {
 function str(value: string): LiteralString {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.String,
         value
     }
@@ -140,5 +165,9 @@ function imports(name: string, relativeTo: string): Value {
     if (fs.existsSync(fileName)) {
         return run(fileName)
     }
-    error(`Cannot find '${name}'`)
+    return {
+        kind: NodeKind.Error,
+        start: 0,
+        message: `Cannot find '${name}'`
+    }
 }

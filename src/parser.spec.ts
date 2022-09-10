@@ -129,12 +129,14 @@ describe("parser", () => {
 function p(text: string): Expression {
     const lexer = new Lexer(text)
     const result = parse(lexer, "test")
-    return result
+    const zeroed = zeroStarts(result)
+    return zeroed
 }
 
 function i(value: number): LiteralInt {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.Int,
         value
     }
@@ -143,6 +145,7 @@ function i(value: number): LiteralInt {
 function f(value: number): LiteralFloat {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.Float,
         value
     }
@@ -151,6 +154,7 @@ function f(value: number): LiteralFloat {
 function s(value: string): LiteralString {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.String,
         value
     }
@@ -159,6 +163,7 @@ function s(value: string): LiteralString {
 function nl(): LiteralNull {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.Null,
         value: null
     }
@@ -167,6 +172,7 @@ function nl(): LiteralNull {
 function r(name: string): Reference {
     return {
         kind: NodeKind.Reference,
+        start: 0,
         name
     }
 }
@@ -174,6 +180,7 @@ function r(name: string): Reference {
 function l(names: string[], body: Expression): Lambda {
     return {
         kind: NodeKind.Lambda,
+        start: 0,
         parameters: names,
         body
     }
@@ -182,6 +189,7 @@ function l(names: string[], body: Expression): Lambda {
 function c(target: Expression, ...args: Expression[]): Call {
     return {
         kind: NodeKind.Call,
+        start: 0,
         target,
         args
     }
@@ -190,6 +198,7 @@ function c(target: Expression, ...args: Expression[]): Call {
 function rec(...members: (Member | Projection)[]): Record {
     return {
         kind: NodeKind.Record,
+        start: 0,
         members
     }
 }
@@ -197,6 +206,7 @@ function rec(...members: (Member | Projection)[]): Record {
 function m(name: string, value: Expression): Member {
     return {
         kind: NodeKind.Member,
+        start: 0,
         name,
         value
     }
@@ -205,6 +215,7 @@ function m(name: string, value: Expression): Member {
 function a(...values: (Expression | Projection)[]): Array {
     return {
         kind: NodeKind.Array,
+        start: 0,
         values
     }
 }
@@ -212,6 +223,7 @@ function a(...values: (Expression | Projection)[]): Array {
 function idx(target: Expression, index: Expression): Index {
     return {
         kind: NodeKind.Index,
+        start: 0,
         target,
         index
     }
@@ -220,6 +232,7 @@ function idx(target: Expression, index: Expression): Index {
 function sel(target: Expression, name: string): Select {
     return {
         kind: NodeKind.Select,
+        start: 0,
         target,
         name
     }
@@ -228,6 +241,7 @@ function sel(target: Expression, name: string): Select {
 function lt(body: Expression, ...bindings: Binding[]): Let {
     return {
         kind: NodeKind.Let,
+        start: 0,
         bindings,
         body
     }
@@ -236,6 +250,7 @@ function lt(body: Expression, ...bindings: Binding[]): Let {
 function b(name: string, value: Expression): Binding {
     return {
         kind: NodeKind.Binding,
+        start: 0,
         name,
         value
     }
@@ -244,6 +259,7 @@ function b(name: string, value: Expression): Binding {
 function pr(value: Expression): Projection {
     return {
         kind: NodeKind.Projection,
+        start: 0,
         value
     }
 }
@@ -251,6 +267,7 @@ function pr(value: Expression): Projection {
 function mtch(target: Expression, ...clauses: MatchClause[]): Match {
     return {
         kind: NodeKind.Match,
+        start: 0,
         target,
         clauses
     }
@@ -259,6 +276,7 @@ function mtch(target: Expression, ...clauses: MatchClause[]): Match {
 function cl(pattern: Expression, value: Expression): MatchClause {
     return {
         kind: NodeKind.MatchClause,
+        start: 0,
         pattern,
         value
     }
@@ -267,6 +285,57 @@ function cl(pattern: Expression, value: Expression): MatchClause {
 function v(name: string): Variable {
     return {
         kind: NodeKind.Variable,
+        start: 0,
         name
     }
+}
+
+function zeroStarts(node: Expression): Expression {
+    node.start = 0
+    switch (node.kind) {
+        case NodeKind.Let:
+            for (const binding of node.bindings) {
+                binding.start = 0
+                zeroStarts(binding.value)
+            }
+            zeroStarts(node.body)
+            break
+        case NodeKind.Lambda:
+            zeroStarts(node.body)
+            break
+        case NodeKind.Call:
+            zeroStarts(node.target)
+            node.args.forEach(zeroStarts)
+            break
+        case NodeKind.Record:
+            node.members.forEach(m => {
+                m.start = 0
+                zeroStarts(m.value)
+            })
+            break
+        case NodeKind.Array:
+            node.values.forEach(zeroStarts)
+            break
+        case NodeKind.Select:
+        case NodeKind.Quote:
+        case NodeKind.Splice:
+            zeroStarts(node.target)
+            break
+        case NodeKind.Index:
+            zeroStarts(node.target)
+            zeroStarts(node.index)
+            break
+        case NodeKind.Projection:
+            zeroStarts(node.value)
+            break
+        case NodeKind.Match:
+            zeroStarts(node.target)
+            node.clauses.forEach(c => {
+                c.start = 0
+                zeroStarts(c.pattern)
+                zeroStarts(c.value)
+            })
+            break
+    }
+    return node
 }

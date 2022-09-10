@@ -1,7 +1,7 @@
 import {
     Array, Binding, Call, Expression, Import, Index, Lambda, Let, LiteralBoolean, LiteralInt, LiteralKind, LiteralString, Match, MatchClause, Member,  NodeKind, Projection, Record, Reference, Select, Variable
 } from "./ast"
-import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf, importedOf } from "./eval"
+import { ArrayValue, evaluate, RecordValue, Value, valueEquals, symbolOf, importedOf, ErrorValue } from "./eval"
 import { valueToString } from "./value-string"
 
 describe("eval", () => {
@@ -227,22 +227,25 @@ describe("eval", () => {
 function i(value: number): LiteralInt {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.Int,
-        value
+        value: value | 0
     }
 }
 
 function bool(value: boolean): LiteralBoolean {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.Boolean,
-        value
+        value: value == true
     }
 }
 
 function a(...values: (Expression | Projection)[]): Array {
     return {
         kind: NodeKind.Array,
+        start: 0,
         values
     }
 }
@@ -250,6 +253,7 @@ function a(...values: (Expression | Projection)[]): Array {
 function imp(name: string): Import {
     return {
         kind: NodeKind.Import,
+        start: 0,
         name
     }
 }
@@ -257,6 +261,7 @@ function imp(name: string): Import {
 function idx(target: Expression, index: Expression): Index {
     return {
         kind: NodeKind.Index,
+        start: 0,
         target,
         index
     }
@@ -265,6 +270,7 @@ function idx(target: Expression, index: Expression): Index {
 function l(names: string[], body: Expression): Lambda {
     return {
         kind: NodeKind.Lambda,
+        start: 0,
         parameters: names,
         body
     }
@@ -273,6 +279,7 @@ function l(names: string[], body: Expression): Lambda {
 function c(target: Expression, ...args: Expression[]): Call {
     return {
         kind: NodeKind.Call,
+        start: 0,
         target,
         args
     }
@@ -281,6 +288,7 @@ function c(target: Expression, ...args: Expression[]): Call {
 function r(name: string): Reference {
     return {
         kind: NodeKind.Reference,
+        start: 0,
         name
     }
 }
@@ -288,6 +296,7 @@ function r(name: string): Reference {
 function rec(...members: (Member | Projection)[]): Record {
     return {
         kind: NodeKind.Record,
+        start: 0,
         members
     }
 }
@@ -295,6 +304,7 @@ function rec(...members: (Member | Projection)[]): Record {
 function m(name: string, value: Expression): Member {
     return {
         kind: NodeKind.Member,
+        start: 0,
         name,
         value
     }
@@ -303,6 +313,7 @@ function m(name: string, value: Expression): Member {
 function sel(target: Expression, name: string): Select {
     return {
         kind: NodeKind.Select,
+        start: 0,
         target,
         name
     }
@@ -311,6 +322,7 @@ function sel(target: Expression, name: string): Select {
 function lt(body: Expression, ...bindings: Binding[]): Let {
     return {
         kind: NodeKind.Let,
+        start: 0,
         bindings,
         body
     }
@@ -319,6 +331,7 @@ function lt(body: Expression, ...bindings: Binding[]): Let {
 function b(name: string, value: Expression): Binding {
     return {
         kind: NodeKind.Binding,
+        start: 0,
         name,
         value
     }
@@ -327,6 +340,7 @@ function b(name: string, value: Expression): Binding {
 function pr(value: Expression): Projection {
     return {
         kind: NodeKind.Projection,
+        start: 0,
         value
     }
 }
@@ -334,6 +348,7 @@ function pr(value: Expression): Projection {
 function mtch(target: Expression, ...clauses: MatchClause[]): Match {
     return {
         kind: NodeKind.Match,
+        start: 0,
         target,
         clauses
     }
@@ -342,6 +357,7 @@ function mtch(target: Expression, ...clauses: MatchClause[]): Match {
 function cl(pattern: Expression, value: Expression): MatchClause {
     return {
         kind: NodeKind.MatchClause,
+        start: 0,
         pattern,
         value
     }
@@ -383,7 +399,16 @@ function bav(...values: Value[]): ArrayValue {
 function v(name: string): Variable {
     return {
         kind: NodeKind.Variable,
+        start: 0,
         name
+    }
+}
+
+function err(message: string): ErrorValue {
+    return {
+        kind: NodeKind.Error,
+        start: 0,
+        message
     }
 }
 
@@ -432,6 +457,7 @@ function toString(value: Value): string {
 function str(value: string): LiteralString {
     return {
         kind: NodeKind.Literal,
+        start: 0,
         literal: LiteralKind.String,
         value
     }
@@ -449,6 +475,10 @@ export function simpleImports(name: string): Value {
         case "string.concat": return importedOf("concat", file => str(file.map(toString).join("")))
         case "string.less": return importedOf("less", ([left, right]) => bool(toString(left) < toString(right)))
         case "string.sub": return importedOf("sub", ([s, start, end]) => str(toString(s).substring(toInt(start), toIntU(end))))
-        default: error(`Could not import '${name}'`)
+        default: return {
+            kind: NodeKind.Error,
+            start: 0,
+            message: `Could not import "${name}"`
+        }
     }
 }

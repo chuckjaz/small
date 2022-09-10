@@ -1,3 +1,4 @@
+import { FileBuilder } from "./files"
 import { Token } from "./token"
 
 export class Lexer {
@@ -7,10 +8,18 @@ export class Lexer {
     line = 1
     lineStart = 0
     value: any = null
+    private builder?: FileBuilder
 
-    constructor(text: string) {
+    constructor(text: string, builder?: FileBuilder) {
         this.text = text
+        this.builder = builder
     }
+
+    get position() { 
+        const builder = this.builder
+        const start = this.start
+        return builder != null ? builder.pos(start) : start
+     }
 
     next(): Token {
         const text = this.text
@@ -30,8 +39,9 @@ export class Lexer {
                     if (text[i] == "\n") i++
                     // fallthrough
                 case "\n":
-                    this.lineStart = this.start
+                    this.lineStart = i
                     this.line++
+                    this.builder?.addLine(i)
                     continue
                 case "A": case "B": case "C": case "D": case "E":
                 case "F": case "G": case "H": case "I": case "J":

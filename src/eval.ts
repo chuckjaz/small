@@ -1,4 +1,6 @@
 import { Array, Expression, Literal, LiteralInt, LiteralKind, Member, NodeKind, Projection, Record, Variable } from "./ast";
+import { Location } from './files'
+import { Token } from "./token";
 import { valueToString } from "./value-string";
 
 const enum BoundKind {
@@ -21,6 +23,7 @@ const enum BoundKind {
 
 interface BoundReference {
     kind: BoundKind.Reference,
+    start: number
     name: string // debugging only
     level: number
     index: number
@@ -34,6 +37,7 @@ interface BoundLet {
 
 interface BoundImport {
     kind: BoundKind.Import
+    start: number
     name: string
     value: Value
 }
@@ -46,12 +50,14 @@ interface BoundLambda {
 
 interface BoundCall {
     kind: BoundKind.Call
+    start: number
     args: BoundExpression[]
     target: BoundExpression
 }
 
 interface BoundSelect {
     kind: BoundKind.Select
+    start: number
     target: BoundExpression
     name: string // Debugging only
     symbol: number
@@ -59,6 +65,7 @@ interface BoundSelect {
 
 interface BoundIndex {
     kind: BoundKind.Index
+    start: number
     target: BoundExpression
     index: BoundExpression
 }
@@ -71,26 +78,31 @@ interface BoundRecord {
 
 interface BoundArray {
     kind: BoundKind.Array
+    start: number
     values: BoundExpression[]
 }
 
 interface BoundProjection {
     kind: BoundKind.Projection
+    start: number
     value: BoundExpression
 }
 
 interface BoundQuote {
     kind: BoundKind.Quote
+    start: number
     target: BoundExpression
 }
 
 interface BoundSplice {
     kind: BoundKind.Splice
+    start: number
     target: BoundExpression
 }
 
 interface BoundMatch {
     kind: BoundKind.Match
+    start: number
     target: BoundExpression
     clauses: BoundMatchClause[]
 }
@@ -104,12 +116,14 @@ interface BoundMatchClause {
 
 interface BoundVariable {
     kind: BoundKind.Variable
+    start: number
     name: string // debugging only
     index: number
 }
 
 export type BoundExpression =
     Literal |
+    ErrorValue |
     BoundReference |
     BoundLet |
     BoundImport |
@@ -143,7 +157,7 @@ interface BindingContext {
 
 const emptyScope: Scope = {
     find(name: string) { return undefined },
-    allocate(name: string) { return error(`Cannot declare varaible ${name} in this context`) }
+    allocate(name: string) { return error(null, `Cannot declare varaible ${name} in this context`) }
 }
 
 const emptyContext: BindingContext = {
@@ -182,12 +196,13 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                     const { level, index } = location
                     return {
                         kind: BoundKind.Reference,
+                        start: node.start,
                         name,
                         level,
                         index
                     }
                 } else {
-                    error(`Undefined "${name}"`)
+                    error(node, `Undefined "${name}"`)
                 }
             }
             case NodeKind.Let: {
@@ -196,7 +211,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 for (const binding of node.bindings) {
                     const name = binding.name
                     if (indexes.has(name)) {
-                        error(`Duplicate variable name $name`)
+                        error(node, `Duplicate variable name $name`)
                     }
                     indexes.set(name, index++)
                 }
@@ -212,9 +227,18 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
             case NodeKind.Import: {
                 const name = node.name
                 const value = imports ? imports(name) : undefined
-                if (!value) error(`Import '${name}' not found`)
+                if (value && value.kind == NodeKind.Error) {
+                    if (value.start == 0) value.start = node.start
+                    return value
+                }
+                if (!value) return  {
+                    kind: NodeKind.Error,
+                    start: node.start,
+                    message: `Import "${name}" not found`
+                }
                 return {
                     kind: BoundKind.Import,
+                    start: node.start,
                     name,
                     value
                 }
@@ -234,6 +258,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 let args = node.args.map(arg => b(context, arg))
                 return {
                     kind: BoundKind.Call,
+                    start: node.start,
                     target,
                     args
                 }
@@ -247,6 +272,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                             const value = b(context, member.value)
                             members.push({
                                 kind: BoundKind.Projection,
+                                start: member.start,
                                 value
                             })
                             break
@@ -271,6 +297,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                             const v = b(context, value.value)
                             values.push({
                                 kind: BoundKind.Projection,
+                                start: value.start,
                                 value: v
                             })
                             break
@@ -282,6 +309,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 }
                 return {
                     kind: BoundKind.Array,
+                    start: node.start,
                     values
                 }
             }
@@ -291,6 +319,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const symbol = symbolOf(name)
                 return {
                     kind: BoundKind.Select,
+                    start: node.start,
                     target,
                     name,
                     symbol
@@ -301,6 +330,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const index = b(context, node.index)
                 return {
                     kind: BoundKind.Index,
+                    start: node.start,
                     target,
                     index
                 }
@@ -310,6 +340,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const target = b(quoteContext, node.target)
                 return {
                     kind: BoundKind.Quote,
+                    start: node.start,
                     target
                 }
             }
@@ -318,6 +349,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const target = b(spliceContext, node.target)
                 return {
                     kind: BoundKind.Splice,
+                    start: node.start,
                     target
                 }
             }
@@ -325,6 +357,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const value = b(context, node.value)
                 return {
                     kind: BoundKind.Projection,
+                    start: node.start,
                     value
                 }
             }
@@ -332,6 +365,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const index = context.scope.allocate(node.name)
                 return {
                     kind: BoundKind.Variable,
+                    start: node.start,
                     name: node.name,
                     index
                 }
@@ -352,6 +386,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 })
                 return {
                     kind: BoundKind.Match,
+                    start: node.start,
                     target,
                     clauses
                 }
@@ -368,7 +403,8 @@ export type Value =
     ArrayValue |
     QuoteValue |
     LambdaValue |
-    Imported
+    Imported |
+    ErrorValue
 
 export interface ArrayValue {
     kind: NodeKind.Array
@@ -397,6 +433,13 @@ export interface Imported {
     kind: NodeKind.Import
     name: string
     fun: (file: Value[]) => Value
+}
+
+export interface ErrorValue {
+    kind: NodeKind.Error
+    start: number
+    stack?: number[]
+    message: string
 }
 
 export function valueEquals(a: Value, b: Value): boolean {
@@ -435,6 +478,10 @@ export function valueEquals(a: Value, b: Value): boolean {
             const bTarget = (b as QuoteValue).target
             if (aTarget.kind == NodeKind.Literal && bTarget.kind == NodeKind.Literal)
                 return valueEquals(aTarget, bTarget)
+            break
+        }
+        case NodeKind.Error: {
+            if (a.message == (b as ErrorValue).message) return true
         }
     }
     return false
@@ -455,19 +502,28 @@ function boundEvaluate(expression: BoundExpression): Value {
         }
     }
 
+    function errorValue(location: Location, message: string): ErrorValue {
+        return {
+            kind: NodeKind.Error,
+            start: location.start,
+            message
+        }
+    }
+
     function e(context: CallContext, node: BoundExpression): Step {
         switch (node.kind) {
             case NodeKind.Literal: return node
+            case NodeKind.Error: return node
             case BoundKind.Reference: {
                 const result = (context[node.level] ?? [])[node.index]
                 if (result === undefined)
-                    error(`Internal error: unbound value ${node.name}`)
+                    error(node, `Internal error: unbound value ${node.name}`)
                 return result
             }
             case BoundKind.Projection:
-                error("Cannot project in this context")
+                return errorValue(node, "Cannot project in this context")
             case BoundKind.Variable:
-                error("Internal error: invalid location for a variable")
+                return errorValue(node, "Internal error: invalid location for a variable")
             case BoundKind.Import: return node.value
             case BoundKind.Let: {
                 const bindings: Value[] = []
@@ -479,41 +535,57 @@ function boundEvaluate(expression: BoundExpression): Value {
             }
             case BoundKind.Call: {
                 const target = resolve(e(context, node.target))
-                const args = node.args.map(v => resolve(e(context, v)))
+                if (target.kind == NodeKind.Error) return target
+                const args: Value[] = []
+                for (const arg of node.args) {
+                    const v = resolve(e(context, arg))
+                    if (v.kind == NodeKind.Error) return v
+                    args.push(v)
+                }
                 switch (target.kind) {
                     case NodeKind.Lambda:
                         if (target.arity != node.args.length) {
-                            error(`Incorrect number of arguments, expected ${target.arity}, received ${node.args.length}`)
+                            return  errorValue(node, `Incorrect number of arguments, expected ${target.arity}, received ${node.args.length}`)
                         }
                         const callContext = [args, ...target.context]
-                        return () => e(callContext, target.body)
+                        return () => {
+                            const result = e(callContext, target.body)
+                            if (typeof result == 'object' && result.kind == NodeKind.Error) {
+                                if (!result.stack) result.stack = []
+                                result.stack?.push(node.start)
+                            }
+                            return result
+                        }
                     case NodeKind.Import:
                         return target.fun(args)
                     default:
-                        error("Value cannot be called")
+                        return errorValue(node, "Value cannot be called")
                 }
             }
             case BoundKind.Index: {
                 const target = resolve(e(context, node.target))
-                const index = int(resolve(e(context, node.index)))
+                if (target.kind == NodeKind.Error) return target
+                const index = int(node, resolve(e(context, node.index)))
+                if (index.kind == NodeKind.Error) return index
                 switch (target.kind) {
                     case NodeKind.Array:
-                        return idx(target.values, index.value)
+                        return idx(node, target.values, index.value)
                     case NodeKind.Literal:
                         if (target.literal == LiteralKind.String) {
-                            return idxs(target.value, index.value)
+                            return idxs(node, target.value, index.value)
                         }
                         // fall-through
                     default:
-                        error("Value cannot be indexed")
+                        return errorValue(node, "Value cannot be indexed")
                 }
             }
             case BoundKind.Select: {
-                const target = record(resolve(e(context, node.target)))
+                const target = record(node, resolve(e(context, node.target)))
+                if (target.kind == NodeKind.Error) return target
                 const symbol = node.symbol
                 const index = target.cls[symbol]
                 if (index == undefined) {
-                    error(`Member "${node.name}" not found`)
+                    return errorValue(node, `Member "${node.name}" not found`)
                 }
                 return target.values[index]
             }
@@ -522,12 +594,15 @@ function boundEvaluate(expression: BoundExpression): Value {
                 for (const value of node.values) {
                     switch (value.kind) {
                         case BoundKind.Projection: {
-                            const a = array(resolve(e(context, value.value)))
+                            const a = array(value, resolve(e(context, value.value)))
+                            if (a.kind == NodeKind.Error) return a
                             values.push(...a.values)
                             break
                         }
                         default:
-                            values.push(resolve(e(context, value)))
+                            const element = resolve(e(context, value))
+                            if (element.kind == NodeKind.Error) return element
+                            values.push(element)
                             break
                     }
                 }
@@ -539,10 +614,12 @@ function boundEvaluate(expression: BoundExpression): Value {
             case BoundKind.Record: {
                 const cls: number[] = []
                 const values: Value[] = []
-                node.members.forEach((member, index) => {
+                let index = 0
+                for (const member of node.members) {
                     switch (member.kind) {
                         case BoundKind.Projection:
-                            const r = record(resolve(e(context, member.value)))
+                            const r = record(member, resolve(e(context, member.value)))
+                            if (r.kind == NodeKind.Error) return r
                             const symbols = classToSymbols(r.cls)
                             symbols.forEach((symbol, index) => {
                                 if (cls[symbol] == undefined) {
@@ -554,10 +631,13 @@ function boundEvaluate(expression: BoundExpression): Value {
                         default:
                             const symbol = node.symbols[index]
                             cls[symbol] = values.length
-                            values.push(resolve(e(context, member)))
+                            const m = resolve(e(context, member))
+                            if (m.kind == NodeKind.Error) return m
+                            values.push(m)
                             break
                     }
-                })
+                    index++
+                }
                 return {
                     kind: NodeKind.Record,
                     cls,
@@ -583,12 +663,15 @@ function boundEvaluate(expression: BoundExpression): Value {
                 switch (target.kind) {
                     case NodeKind.Quote:
                         return e(context, target.target)
+                    case NodeKind.Error:
+                        return target
                     default:
-                        error(`Can only splice a quote: ${valueToString(target)}`)
+                        return errorValue(node, `Can only splice a quote: ${valueToString(target)}`)
                 }
             }
             case BoundKind.Match: {
                 const target = resolve(e(context, node.target))
+                if (target.kind == NodeKind.Error) return target
                 for (const clause of node.clauses) {
                     const file: Value[] = []
                     if (match(context, clause.pattern, target, file)) {
@@ -596,7 +679,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                         return e(matchContext, clause.value)
                     }
                 }
-                error(`Match not found: ${valueToString(target)} for ${boundToString(node)}`)
+                return errorValue(node, `Match not found: ${valueToString(target)} for ${boundToString(node)}`)
             }
         }
     }
@@ -604,6 +687,7 @@ function boundEvaluate(expression: BoundExpression): Value {
     function quote(context: CallContext, node: BoundExpression): BoundExpression {
         switch (node.kind) {
             case NodeKind.Literal: return node
+            case NodeKind.Error: return node
             case BoundKind.Reference: return node
             case BoundKind.Variable: return node
             case BoundKind.Let: {
@@ -629,6 +713,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const args = node.args.map(a => quote(context, a))
                 return {
                     kind: BoundKind.Call,
+                    start: node.start,
                     target,
                     args
                 }
@@ -645,6 +730,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const values = node.values.map(e => quote(context, e))
                 return {
                     kind: BoundKind.Array,
+                    start: node.start,
                     values
                 }
             }
@@ -652,6 +738,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const target = quote(context, node.target)
                 return {
                     kind: BoundKind.Select,
+                    start: node.start,
                     target,
                     name: node.name,
                     symbol: node.symbol
@@ -662,6 +749,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const index = quote(context, node.index)
                 return {
                     kind: BoundKind.Index,
+                    start: node.start,
                     target,
                     index
                 }
@@ -671,6 +759,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const value = quote(context, node.value)
                 return {
                     kind: BoundKind.Projection,
+                    start: node.start,
                     value
                 }
             }
@@ -680,7 +769,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                     case NodeKind.Quote:
                         return target.target
                     default:
-                        error(`Can only splice a quote: ${valueToString(target)}`)
+                        return errorValue(node, `Can only splice a quote: ${valueToString(target)}`)
                 }
             }
             case BoundKind.Match: {
@@ -688,6 +777,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const clauses = node.clauses.map(quoteClause)
                 return {
                     kind: BoundKind.Match,
+                    start: node.start,
                     target,
                     clauses
                 }
@@ -742,7 +832,7 @@ function boundEvaluate(expression: BoundExpression): Value {
             const e = values.length - 1
             for (let i = 0; i > projectionIndex; i--) {
                 const element = pattern.values[i]
-                if (element.kind == BoundKind.Projection) error("Only one projection allowed in a pattern")
+                if (element.kind == BoundKind.Projection) error(pattern, "Only one projection allowed in a pattern")
                 if (!match(context, element, values[e - i], file)) return false
             }
             const projectedArray: ArrayValue = {
@@ -762,7 +852,7 @@ function boundEvaluate(expression: BoundExpression): Value {
             for (const member of pattern.members) {
                 switch (member.kind) {
                     case BoundKind.Projection: {
-                        if (projection) error("Only one projection allowed in an array pattern")
+                        if (projection) error(member, "Only one projection allowed in an array pattern")
                         projection = member
                         break
                     }
@@ -795,34 +885,33 @@ function boundEvaluate(expression: BoundExpression): Value {
         }
     }
 
-    function array(node: Value): ArrayValue {
-        if (node.kind != NodeKind.Array) error("Expected an array")
+    function array(location: Location, node: Value): ArrayValue | ErrorValue {
+        if (node.kind != NodeKind.Array) return errorValue(location, "Expected an array")
         return node
     }
 
-    function record(node: Value): RecordValue {
-        if (node.kind != NodeKind.Record) error("Expect a record")
+    function record(location: Location, node: Value): RecordValue | ErrorValue {
+        if (node.kind != NodeKind.Record) return errorValue(location, "Expected a record")
         return node
     }
 
-    function int(node: Value): LiteralInt {
-        if (node.kind != NodeKind.Literal || node.literal != LiteralKind.Int) error("Expected an integer")
+    function int(location: Location, node: Value): LiteralInt | ErrorValue {
+        if (node.kind != NodeKind.Literal || node.literal != LiteralKind.Int) return errorValue(location, "Expected an integer")
         return node
     }
 
-    function rangeCheck(values: string | Value[], index: number) {
-        if (index < 0 || index >= values.length) error(`Index out of bound, $index in [0..${values.length})`)
+    function rangeCheck(location: Location, values: string | Value[], index: number): ErrorValue | undefined {
+        if (index < 0 || index >= values.length) return errorValue(location, `Index out of bound, ${index} in 0..${values.length}`)
     }
 
-    function idx(values: Value[], index: number) {
-        rangeCheck(values, index)
-        return values[index]
+    function idx(location: Location, values: Value[], index: number): Value {
+        return rangeCheck(location, values, index) ?? values[index]
     }
 
-    function idxs(value: string, index: number): LiteralInt {
-        rangeCheck(value, index)
-        return {
+    function idxs(location: Location, value: string, index: number): LiteralInt | ErrorValue {
+        return rangeCheck(location, value, index) ?? {
             kind: NodeKind.Literal,
+            start: 0,
             literal: LiteralKind.Int,
             value: value.charCodeAt(index)
         }
@@ -905,13 +994,16 @@ export function classToSymbols(cls: number[]): number[] {
     return symbols
 }
 
-function error(message: string): never {
-    throw Error(message)
+function error(location: Location | null, message: string): never {
+    const err = new Error(message);
+    if (location) (err as any).start = location.start
+    throw err
 }
 
 export function boundToString(node: BoundExpression): string {
     switch (node.kind) {
         case NodeKind.Literal: return valueToString(node)
+        case NodeKind.Error: return valueToString(node)
         case BoundKind.Reference: return `${node.name}#${node.level}:${node.index}`
         case BoundKind.Let: return `let ${node.bindings.map(boundToString).join()} in ${boundToString(node.body)}`
         case BoundKind.Import: return `import ${node.name}`

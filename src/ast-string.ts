@@ -19,7 +19,8 @@ export function nodeKindString(kind: NodeKind): string {
         case NodeKind.Projection: return "Projection"
         case NodeKind.Match: return "Match"
         case NodeKind.MatchClause: return "MatchClause"
-        case NodeKind.Variable: return "variable"
+        case NodeKind.Variable: return "Variable"
+        case NodeKind.Error: return "Error"
     }
 }
 

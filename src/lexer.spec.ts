@@ -1,6 +1,9 @@
 import { Lexer } from "./lexer"
 import { Token } from "./token"
 
+import * as fs from 'fs'
+import { FileSet, fileSetBuilder } from "./files"
+
 describe("lexer", () => {
     it("can scan an identifier", () => {
         l("abcd", Token.Identifier)
@@ -82,6 +85,10 @@ describe("lexer", () => {
             Token.RBrace, Token.LBrack, Token.RBrack, Token.Dot, Token.Comma, Token.Colon, 
             Token.Equal, Token.Lambda, Token.Dollar, Token.Quote, Token.Hash, Token.Float)
     })
+    it("can scan smaller.sm", () => {
+        const [tokens] = lf("src/smaller.sm")
+        expect(tokens.length).toBeGreaterThan(0)
+    })
 })
 
 function l(text: string, ...tokens: Token[]) {
@@ -90,4 +97,64 @@ function l(text: string, ...tokens: Token[]) {
         expect(lexer.next()).toEqual(token)
     }
     expect(lexer.next()).toEqual(Token.EOF)
+}
+
+function lf(fileName: string): [Token[], number[], FileSet] {
+    const text = fs.readFileSync(fileName, 'utf-8')
+    const builder = fileSetBuilder()
+    const fileBuilder = builder.file(fileName, text.length)
+    const lexer = new Lexer(text, fileBuilder)
+    const tokens: Token[] = []
+    const positions: number[] = []
+    for (let token = lexer.next(); token != Token.EOF; token = lexer.next()) {
+        positions.push(lexer.position)
+        tokens.push(token)
+    }
+    fileBuilder.build()
+    const set = builder.build()
+    
+    const lines = text.split('\n')
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i]
+        const pos = positions[i]
+        const position = set.position({ start: pos })
+        if (position == null) throw new Error("Expected a position to be valid")
+        const c = lines[position.line - 1][position.column - 1]
+        switch (token) {
+            case Token.Colon: expect(c).toBe(':'); break
+            case Token.Comma: expect(c).toBe(','); break
+            case Token.Dollar: expect(c).toBe('$'); break
+            case Token.Dot: expect(c).toBe('.'); break
+            case Token.Equal: expect(c).toBe('='); break
+            case Token.False: expect(c).toBe('f'); break
+            case Token.Hash: expect(c).toBe('#'); break
+            case Token.Identifier: expect(isIdentStart(c)).toBeTrue(); break
+            case Token.In: expect(c).toBe('i'); break
+            case Token.Integer: expect(isNumberStart(c)).toBeTrue(); break
+            case Token.LBrace: expect(c).toBe('{'); break
+            case Token.LBrack: expect(c).toBe('['); break
+            case Token.LParen: expect(c).toBe('('); break
+            case Token.Lambda: expect(c).toBe('/'); break
+            case Token.Let: expect(c).toBe('l'); break
+            case Token.Match: expect(c).toBe('m'); break
+            case Token.Null: expect(c).toBe('n'); break
+            case Token.Project: expect(c).toBe('.'); break
+            case Token.Quote: expect(c).toBe("'"); break
+            case Token.RBrace: expect(c).toBe('}'); break
+            case Token.RBrack: expect(c).toBe(']'); break
+            case Token.RParen: expect(c).toBe(')'); break
+            case Token.String: expect(c).toBe('"'); break
+            case Token.True: expect(c).toBe('t'); break
+            default: throw Error("Unexpected token")
+        }
+    }
+    return [tokens, positions, set]
+}
+
+function isIdentStart(c: string): boolean {
+    return !!c.match(/[a-z_]/i)
+}
+
+function isNumberStart(c: string): boolean {
+    return !!c.match(/[0-9]/)
 }

@@ -60,6 +60,21 @@ describe("integration tests", () => {
         `,
         `[10, 20]`)
     })
+    it("empty array only matches empty array", () => {
+        ex(`
+            match [1, 2, 3] {
+                [] in [],
+                [1, 2, 3] in "Passed"
+            }
+        `, `"Passed"`)
+    })
+    it("can match an projection of empty", () => {
+        ex(`
+            match [42] {
+                [#x, ...#t] in [x, [...t]]
+            }
+        `, `[42, []]`)
+    })
     describe("imports", () => {
         it("can add", () => {
             ex(`let iadd = import "int.add" in iadd(21, 21)`, `42`)
@@ -183,7 +198,7 @@ describe("integration tests", () => {
             ee("$'($1)", "Can only splice a quote: 1")
         })
         it("reports invalid array", () => {
-            ee("[...1]", "Expected an array")
+            ee("[...1]", "Expected an array: 1")
         })
         it("reports invalid record", () => {
             ee("{...1}", "Expected a record")

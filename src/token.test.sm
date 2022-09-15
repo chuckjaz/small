@@ -1,0 +1,38 @@
+let
+    Token = import "token.sm".Token,
+    tokenToString = import "token.sm".tokenToString,
+    add = import "ints".add,
+
+    expect = /(a,b).match a {
+        b in ["Passed", a]
+    },
+    test = /l.match l {
+        [[#token, #value], ...#rest] in [expect(tokenToString(token), value), ...test(rest)],
+        [] in []
+    }
+in test([
+    [Token.Identifier, "Identifier"],
+    [Token.Integer, "Integer"],
+    [Token.Float, "Float"],
+    [Token.String, "String"],
+    [Token.Lambda, "Lambda"],
+    [Token.Dot, "Dot"],
+    [Token.Comma, "Comma"],
+    [Token.Colon, "Colon"],
+    [Token.Equal, "Equal"],
+    [Token.Project, "Project"],
+    [Token.LParen, "LParen"],
+    [Token.RParen, "RParen"],
+    [Token.LBrack, "LBrack"],
+    [Token.RBrack, "RBrack"],
+    [Token.LBrace, "LBrace"],
+    [Token.RBrace, "RBrace"],
+    [Token.True, "True"],
+    [Token.False, "False"],
+    [Token.In, "In"],
+    [Token.Let, "Let"],
+    [Token.Match, "Match"],
+    [Token.Null, "Null"],
+    [Token.EOF, "EOF"],
+    [Token.Error, "Error"]
+])

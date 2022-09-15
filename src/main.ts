@@ -66,7 +66,7 @@ if (flags.args.length != 1) {
 
 try {
     const result = run(flags.args[0])
-    console.log(valueToString(result))
+    console.log(valueToString(result, setBuilder.build()))
 } catch (e: any) {
     if ('line' in e) {
         console.log(e.message)

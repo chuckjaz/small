@@ -823,12 +823,13 @@ function boundEvaluate(expression: BoundExpression): Value {
                         projectionIndex = i
                         break loop
                     default:
+                        if (i >= values.length) return false
                         if (!match(context, element, values[i], file)) return false
                 }
             }
-            if (!projection) return true
+            if (!projection) return pattern.values.length == values.length
             const postfixCount = pattern.values.length - projectionIndex - 1
-            if (postfixCount + projectionIndex >= values.length) return false
+            if (postfixCount + projectionIndex > values.length) return false
             const e = values.length - 1
             for (let i = 0; i > projectionIndex; i--) {
                 const element = pattern.values[i]
@@ -886,18 +887,31 @@ function boundEvaluate(expression: BoundExpression): Value {
     }
 
     function array(location: Location, node: Value): ArrayValue | ErrorValue {
-        if (node.kind != NodeKind.Array) return errorValue(location, "Expected an array")
-        return node
+        switch (node.kind) {
+            case NodeKind.Array:
+            case NodeKind.Error:
+                return node
+        }
+        return errorValue(location, `Expected an array: ${valueToString(node)}`)
     }
 
     function record(location: Location, node: Value): RecordValue | ErrorValue {
-        if (node.kind != NodeKind.Record) return errorValue(location, "Expected a record")
-        return node
+        switch (node.kind) {
+            case NodeKind.Record:
+            case NodeKind.Error:
+                return node
+        }
+        return errorValue(location, "Expected a record")
     }
 
     function int(location: Location, node: Value): LiteralInt | ErrorValue {
-        if (node.kind != NodeKind.Literal || node.literal != LiteralKind.Int) return errorValue(location, "Expected an integer")
-        return node
+        switch (node.kind) {
+            case NodeKind.Literal:
+                if (node.literal == LiteralKind.Int) return node
+                break
+            case NodeKind.Error: return node
+        }
+        return errorValue(location, "Expected an integer")
     }
 
     function rangeCheck(location: Location, values: string | Value[], index: number): ErrorValue | undefined {

@@ -28,5 +28,31 @@ let
         EOF: 22,
         Error: 23,
     },
+    tokenToString = /t.match t {
+        Token.Identifier in "Identifier",
+        Token.Integer in "Integer",
+        Token.Float in "Float",
+        Token.String in "String",
+        Token.Lambda in "Lambda",
+        Token.Dot in "Dot",
+        Token.Comma in "Comma",
+        Token.Colon in "Colon",
+        Token.Equal in "Equal",
+        Token.Project in "Project",
+        Token.LParen in "LParen",
+        Token.RParen in "RParen",
+        Token.LBrack in "LBrack",
+        Token.RBrack in "RBrack",
+        Token.LBrace in "LBrace",
+        Token.RBrace in "RBrace",
+        Token.True in "True",
+        Token.False in "False",
+        Token.In in "In",
+        Token.Let in "Let",
+        Token.Match in "Match",
+        Token.Null in "Null",
+        Token.EOF in "EOF",
+        Token.Error in "Error",
+    }
 in
-    { Token }
+    { Token, tokenToString }

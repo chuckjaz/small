@@ -1,0 +1,15 @@
+let 
+    display = /r.match r {
+        ["Passed", #_] in [],
+        [] in [],
+        [[...#nested], ...#rest] in [...display([...nested]), ...display(rest)],
+        #f in f
+    }
+in
+    match display([
+        import "token.test.sm",
+        import "lexer.test.sm"
+    ]) {
+        [] in "All tests passed",
+        #x in x
+    }

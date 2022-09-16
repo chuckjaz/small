@@ -1,6 +1,6 @@
 let
-    Token = import "token.sm".Token,
-    tokenToString = import "token.sm".tokenToString,
+    Token = import "../token.sm".Token,
+    tokenToString = import "../token.sm".tokenToString,
     add = import "ints".add,
 
     expect = /(a,b).match a {

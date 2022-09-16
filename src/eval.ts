@@ -901,7 +901,7 @@ function boundEvaluate(expression: BoundExpression): Value {
             case NodeKind.Error:
                 return node
         }
-        return errorValue(location, "Expected a record")
+        return errorValue(location, `Expected a record: ${valueToString(node)}`)
     }
 
     function int(location: Location, node: Value): LiteralInt | ErrorValue {
@@ -990,10 +990,21 @@ function swapQuoteSpliceScope(parent: BindingContext): BindingContext {
 }
 
 export function importedOf(name: string, fun: (file: Value[]) => Value): Imported {
+    function errorWrapper(file: Value[]): Value {
+        try {
+            return fun(file)
+        } catch(e) {
+            return {
+                kind: NodeKind.Error,
+                start: 0,
+                message: (e as any).message
+            }
+        }
+    }
     return {
         kind: NodeKind.Import,
         name,
-        fun
+        fun: errorWrapper
     }
 }
 

@@ -8,7 +8,8 @@ let
 in
     match display([
         import "token.test.sm",
-        import "lexer.test.sm"
+        import "lexer.test.sm",
+        import "ast-string.test.sm"
     ]) {
         [] in "All tests passed",
         #x in x

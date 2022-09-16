@@ -86,8 +86,24 @@ describe("lexer", () => {
             Token.Equal, Token.Lambda, Token.Dollar, Token.Quote, Token.Hash, Token.Float)
     })
     it("can scan smaller.sm", () => {
-        const [tokens] = lf("src/smaller.sm")
+        const [tokens] = lf("examples/smaller.sm")
         expect(tokens.length).toBeGreaterThan(0)
+    })
+    describe("strings", () => {
+        function s(text: string): string {
+            const lexer = new Lexer(text)
+            expect(lexer.next()).toBe(Token.String)
+            return lexer.value
+        }
+        it("can parse a quote", () => {
+            expect(s(`"${'\\'}${'\"'}"`)).toBe('"')
+        })
+        it("can parse quotes at start and end", () => {
+            expect(s(`"${'\\'}"value${'\\'}""`)).toBe('"value"')
+        })
+        it("can parse quote in the middle", () => {
+            expect(s(`"front${'\\'}"end"`)).toBe('front"end')
+        })
     })
 })
 

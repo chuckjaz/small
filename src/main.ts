@@ -100,6 +100,11 @@ function incorrectValue(spec: string, value: Value): never {
     error(`Required ${spec}, but received ${valueToString(value)}`)
 }
 
+function booleanOf(value: Value): boolean {
+    if (value.kind == NodeKind.Literal && value.literal == LiteralKind.Boolean) return value.value
+    incorrectValue("a boolean", value)
+}
+
 function numberOf(value: Value): number {
     if (value.kind == NodeKind.Literal && value.literal == LiteralKind.Int) return value.value
     incorrectValue("an integer", value)
@@ -113,6 +118,16 @@ function numberOfU(value: Value | undefined): number | undefined {
 function stringOf(value: Value): string {
     if (value.kind == NodeKind.Literal && value.literal == LiteralKind.String) return value.value
     incorrectValue("an string", value)
+}
+
+function opStringOf(value: Value | undefined): string | undefined {
+    if (value) return stringOf(value)
+    return undefined
+}
+
+function arrayOf(value: Value): Value[] {
+    if (value.kind == NodeKind.Array) return value.values
+    incorrectValue("an array", value)
 }
 
 function bool(value: boolean): LiteralBoolean {
@@ -150,14 +165,19 @@ function imports(name: string, relativeTo: string): Value {
             concat: file => str(file.map(stringOf).join("")),
             sub: ([s, start, end]) => str(stringOf(s).substring(numberOf(start), numberOfU(end))),
             len: ([s]) => int(stringOf(s).length),
-            code: ([s]) => int(stringOf(s).charCodeAt(0))
+            code: ([s]) => int(stringOf(s).charCodeAt(0)),
+            join: ([a, p]) => str(arrayOf(a).map(v => stringOf(v)).join(opStringOf(p)))
         })
         case "ints": return intrinsicsOf({
             add: ([left, right]) => int(numberOf(left) + numberOf(right)),
             sub: ([left, right]) => int(numberOf(left) - numberOf(right)),
             mul: ([left, right]) => int(numberOf(left) * numberOf(right)),
             div: ([left, right]) => int(numberOf(left) / numberOf(right)),
-            less: ([left, right]) => bool(numberOf(left) < numberOf(right))
+            less: ([left, right]) => bool(numberOf(left) < numberOf(right)),
+            string: ([value]) => str(`${numberOf(value)}`)
+        })
+        case "bools": return intrinsicsOf({
+            string: ([value]) => str(`${booleanOf(value)}`)
         })
     }
 

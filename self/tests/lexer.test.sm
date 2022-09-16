@@ -1,6 +1,6 @@
 let
-    Lexer = import "lexer.sm".Lexer,
-    Token = import "token.sm".Token,
+    Lexer = import "../lexer.sm".Lexer,
+    Token = import "../token.sm".Token,
     expect = /(text, expected).let 
         next = /(lex).match lex.token {
             Token.Error in [Token.Error],

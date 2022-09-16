@@ -1,0 +1,32 @@
+let
+    ast = import "../ast.sm",
+    astString = import "../ast-string.sm".string,
+
+    expect =/(ast, text).let
+        result = astString(ast)
+    in match result {
+        text in ["Passed", text ],
+        #result in ["Failed: expected", ast, "to be", text, "received", result]
+    },
+    i = /v.ast.LiteralInt(v),
+    r = /n.ast.Reference(n),
+    b = /(n, v).ast.Binding(n, v)
+in [
+    expect(ast.LiteralBoolean(true), "true"),
+    expect(ast.LiteralInt(1), "1"),
+    expect(ast.LiteralNull(), "null"),
+    expect(ast.LiteralString("value"), "\"value\""),
+    expect(ast.Reference("name"), "name"),
+    expect(ast.Let([b("a", i(1)), b("b", i(2))], r("a")), "let a = 1, b = 2 in a"),
+    expect(ast.Binding("a", i(1)), "a = 1"),
+    expect(ast.Lambda(["a", "b"], i(1)), "/(a, b).1"),
+    expect(ast.Call(r("a"), [r("b"), r("c")]), "a(b, c)"),
+    expect(ast.Record([ast.Member("a", i(1)), ast.Member("b", i(2))]), "{ a: 1, b: 2 }"),
+    expect(ast.Member("a", i(1)), "a: 1"),
+    expect(ast.Array([i(1), i(2), i(3)]), "[1, 2, 3]"),
+    expect(ast.Select(r("a"), "b"), "a.b"),
+    expect(ast.Index(r("a"), r("i")), "a[i]"),
+    expect(ast.Projection(r("a")), "...a"),
+    expect(ast.Match(r("a"), [ast.MatchClause(r("a"), i(1)), ast.MatchClause(r("b"), i(2))]), "match a { a in 1, b in 2 }"),
+    expect(ast.Variable("a"), "#a")
+]

@@ -75,6 +75,15 @@ describe("integration tests", () => {
             }
         `, `[42, []]`)
     })
+    it("can match a function", () => {
+        ex(`
+            let
+                A = /v.{ A, v }
+            in match A(42) {
+                { A, #v } in v
+            }
+        `, `42`)
+    })
     describe("imports", () => {
         it("can add", () => {
             ex(`let iadd = import "int.add" in iadd(21, 21)`, `42`)
@@ -201,7 +210,7 @@ describe("integration tests", () => {
             ee("[...1]", "Expected an array: 1")
         })
         it("reports invalid record", () => {
-            ee("{...1}", "Expected a record")
+            ee("{...1}", "Expected a record: 1")
         })
         it("reports invalid index", () => {
             ee('[1, 2]["a"]', "Expected an integer")

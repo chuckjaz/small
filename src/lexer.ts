@@ -15,7 +15,7 @@ export class Lexer {
         this.builder = builder
     }
 
-    get position() { 
+    get position() {
         const builder = this.builder
         const start = this.start
         return builder != null ? builder.pos(start) : start
@@ -114,7 +114,8 @@ export class Lexer {
                     let strValue = ""
                     let last = this.start + 1
                     function shift(i: number) {
-                        strValue = strValue + text.substring(last, i)
+                        if (last < i)
+                            strValue = strValue + text.substring(last, i)
                         last = i
                     }
                     while (true) {
@@ -129,21 +130,22 @@ export class Lexer {
                                 result = Token.Error
                                 break loop
                             case "\\":
-                                shift(i - 1)
+                                shift(i)
                                 switch (text[i + 1]) {
                                     case "r": strValue += "\r"; break
                                     case "n": strValue += "\n"; break
                                     case "\"": strValue += "\""; break
                                     case "t": strValue += "\t"; break
-                                    default: 
+                                    default:
                                         result = Token.Error
                                         break loop
                                 }
                                 i += 2
+                                last = i
                                 continue
                             default:
                                 i++
-                                continue     
+                                continue
                         }
                         break
                     }

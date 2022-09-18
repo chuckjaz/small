@@ -1,7 +1,7 @@
 let
     Lexer = import "../lexer.sm".Lexer,
     Token = import "../token.sm".Token,
-    expect = /(text, expected).let 
+    expect = /(text, expected).let
         next = /(lex).match lex.token {
             Token.Error in [Token.Error],
             Token.EOF in [],
@@ -42,5 +42,6 @@ in [
         [Token.RBrack, null],
         [Token.LBrace, null],
         [Token.RBrace, null]
-    ])
+    ]),
+    expect("\"abc\"", [[Token.String, "abc"]])
 ]

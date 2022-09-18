@@ -8,15 +8,15 @@ let
 
     Token = import "token.sm".Token,
 
-    Lexer = /text.let 
+    Lexer = /text.let
         ret = /(text, value, token).{ value, token, next: /().next(text) },
         next = /text.let
             loop = /(text).let
                 c = substr(text, 0, 1),
                 rest = substr(text, 1),
-                ident = /(text, value).let 
+                ident = /(text, value).let
                     c = substr(text, 0, 1),
-                    rest = substr(text, 1)
+                    rest = substr(text, 1),
                 in match c {
                     "A" in ident(rest, concat(value, c)),
                     "B" in ident(rest, concat(value, c)),
@@ -88,6 +88,7 @@ let
                         "match" in ret(text, value, Token.Match),
                         "null" in ret(text, value, Token.Null),
                         "true" in ret(text, value, Token.True),
+                        "import" in ret(text, value, Token.Import),
                         #_ in ret(text, value, Token.Identifier)
                     }
                 },
@@ -113,7 +114,8 @@ let
                     rest = substr(text, 1)
                 in match c {
                     "" in ret(text, null, Token.Error),
-                    "\"" in ret(rest, value, Token.String)
+                    "\n" in ret(rest, null, Token.Error),
+                    "\"" in ret(rest, value, Token.String),
                     #_ in string(rest, concat(value, c))
                 },
                 dot = /(rest).match substr(rest, 0, 1) {
@@ -190,6 +192,7 @@ let
                 "7" in number(rest, 7),
                 "8" in number(rest, 8),
                 "9" in number(rest, 9),
+                "\"" in string(rest, ""),
                 "/" in ret(rest, null, Token.Lambda),
                 "." in dot(rest),
                 "," in ret(rest, null, Token.Comma),
@@ -201,6 +204,7 @@ let
                 "]" in ret(rest, null, Token.RBrack),
                 "{" in ret(rest, null, Token.LBrace),
                 "}" in ret(rest, null, Token.RBrace),
+                "#" in ret(rest, null, Token.Hash),
                 "" in ret(text, null, Token.EOF),
                 #_ in ret(text, null, Token.Error)
             },

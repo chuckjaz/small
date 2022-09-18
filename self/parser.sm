@@ -1,0 +1,81 @@
+let
+    strings = import "strings",
+    ints = import "ints",
+    logs = import "logs",
+
+    tokens = import "token.sm",
+    Token = import "token.sm".Token,
+
+    ast =  import "ast.sm",
+
+    parser_combinator = import "parser-combinator.sm",
+    listOf = parser_combinator.listOf,
+    firstOf = parser_combinator.firstOf,
+    oneOf = parser_combinator.oneOf,
+    sequenceOf = parser_combinator.sequenceOf,
+    postfixOf = parser_combinator.postfixOf,
+    expectToken = parser_combinator.expectToken,
+    expect = parser_combinator.expect,
+    tx = parser_combinator.tx,
+
+    expression = /lex.postfixExpression(lex),
+
+    int = expectToken(Token.Integer, /value.ast.LiteralInt(value)),
+    str = expectToken(Token.String, /value.ast.LiteralString(value)),
+    tru = expectToken(Token.True, /value.ast.LiteralBoolean(true)),
+    fal = expectToken(Token.False, /value.ast.LiteralBoolean(false)),
+    nul = expectToken(Token.Null, /value.ast.LiteralNull()),
+    ref = expectToken(Token.Identifier, /value.ast.Reference(value)),
+    name = expectToken(Token.Identifier, /value.value),
+
+    parenOf = /item.sequenceOf([expect(Token.LParen), item, expect(Token.RParen)], /value.value[1]),
+
+    imp = sequenceOf([expect(Token.Import), str], /value.ast.Import(value[1].value)),
+    lam =
+        let
+            arguments = oneOf([
+                [Token.Identifier, tx(name, /name.[name])],
+                [Token.LParen, parenOf(listOf(name))]
+            ])
+        in sequenceOf([expect(Token.Lambda), arguments, expect(Token.Dot), expression], /values.ast.Lambda(values[1], values[3])),
+    lt = let
+            bindings = listOf(sequenceOf([name, expect(Token.Equal), expression], /values.ast.Binding(values[0], values[2])))
+        in sequenceOf([expect(Token.Let), bindings, expect(Token.In), expression], /values.ast.Let(values[1], values[3])),
+    project = sequenceOf([expect(Token.Project), expression], /values.ast.Projection(values[1])),
+    mat = let
+            clauses = listOf(sequenceOf([expression, expect(Token.In), expression], /values.ast.MatchClause(values[0], values[2])))
+        in sequenceOf([expect(Token.Match), expression, expect(Token.LBrace), clauses, expect(Token.RBrace)],/values.ast.Match(values[1], values[3])),
+    rec = let
+            fullMember = sequenceOf([name, expect(Token.Colon), expression], /values.ast.Member(values[0], values[2])),
+            abbrMember = tx(name, /name.ast.Member(name, ast.Reference(name))),
+            abbrVariableMember = sequenceOf([expect(Token.Hash), name], /values.ast.Member(values[1], ast.Variable(values[1]))),
+            member = oneOf([
+                [Token.Identifier, firstOf([fullMember, abbrMember])],
+                [Token.Hash, abbrVariableMember],
+                [Token.Project, project]
+            ]),
+            members = listOf(member)
+        in sequenceOf([expect(Token.LBrace), members, expect(Token.RBrace)], /values.ast.Record(values[1])),
+    arr = sequenceOf([expect(Token.LBrack), listOf(firstOf([project, expression])), expect(Token.RBrack)], /values.ast.Array(values[1])),
+    vr = sequenceOf([expect(Token.Hash), name], /values.ast.Variable(values[1])),
+    primitive = oneOf([
+        [Token.Integer, int],
+        [Token.String, str],
+        [Token.True, tru],
+        [Token.False, fal],
+        [Token.Null, nul],
+        [Token.Import, imp],
+        [Token.Identifier, ref],
+        [Token.Lambda, lam],
+        [Token.Let, lt],
+        [Token.LBrace, rec],
+        [Token.LBrack, arr],
+        [Token.Hash, vr],
+        [Token.Match, mat],
+        [Token.LParen, parenOf(expression)]
+    ]),
+    postfixExpression = postfixOf(primitive, /(left, lex).oneOf([
+        [Token.LParen, tx(parenOf(listOf(expression)), /value.ast.Call(left, value))],
+        [Token.LBrack, sequenceOf([expect(Token.LBrack), expression, expect(Token.RBrack)], /values.ast.Index(left, values[1]))]
+    ])(lex))
+in { listOf, expression }

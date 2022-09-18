@@ -1,6 +1,6 @@
 import { Lexer } from "./lexer";
 import { parse } from "./parser";
-import { evaluate, importedOf, Value } from "./eval";
+import { ErrorValue, evaluate, importedOf, Value } from "./eval";
 import { Flags } from "./flags";
 
 import * as fs from 'fs'
@@ -157,37 +157,52 @@ function str(value: string): LiteralString {
     }
 }
 
+function recordModule(name: string, module: Value): Value {
+    modules.set(name, module)
+    return module
+}
+
 function imports(name: string, relativeTo: string): Value {
     const mod = modules.get(name)
     if (mod !== undefined) return mod
     switch (name) {
-        case "strings": return intrinsicsOf({
+        case "strings": return recordModule(name, intrinsicsOf({
             concat: file => str(file.map(stringOf).join("")),
             sub: ([s, start, end]) => str(stringOf(s).substring(numberOf(start), numberOfU(end))),
             len: ([s]) => int(stringOf(s).length),
             code: ([s]) => int(stringOf(s).charCodeAt(0)),
             join: ([a, p]) => str(arrayOf(a).map(v => stringOf(v)).join(opStringOf(p)))
-        })
-        case "ints": return intrinsicsOf({
+        }))
+        case "ints": return recordModule(name, intrinsicsOf({
             add: ([left, right]) => int(numberOf(left) + numberOf(right)),
             sub: ([left, right]) => int(numberOf(left) - numberOf(right)),
             mul: ([left, right]) => int(numberOf(left) * numberOf(right)),
             div: ([left, right]) => int(numberOf(left) / numberOf(right)),
             less: ([left, right]) => bool(numberOf(left) < numberOf(right)),
             string: ([value]) => str(`${numberOf(value)}`)
-        })
-        case "bools": return intrinsicsOf({
+        }))
+        case "bools": return recordModule(name, intrinsicsOf({
             string: ([value]) => str(`${booleanOf(value)}`)
-        })
+        }))
+        case "logs": return recordModule(name, intrinsicsOf({
+            log: file => { console.log(file.map(v => valueToString(v, setBuilder.build())).join(", ")); return file[file.length - 1] },
+            error: ([message]) => errorValue(valueToString(message))
+        }))
     }
 
     const fileName = path.resolve(relativeTo, name)
+    const fileMod = modules.get(fileName)
+    if (fileMod !== undefined) return fileMod
     if (fs.existsSync(fileName)) {
-        return run(fileName)
+        return recordModule(fileName, run(fileName))
     }
+    return errorValue(`Cannot find '${name}'`)
+}
+
+function errorValue(message: string): ErrorValue {
     return {
         kind: NodeKind.Error,
         start: 0,
-        message: `Cannot find '${name}'`
+        message
     }
 }

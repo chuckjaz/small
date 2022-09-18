@@ -7,7 +7,7 @@ export function valueToString(value: Value, set?: FileSet): string {
     if (!value) return "<invalid value>"
     switch (value.kind) {
         case NodeKind.Literal: return dump(value)
-        case NodeKind.Lambda: return `/(${value.arity}}.${boundToString(value.body)}`
+        case NodeKind.Lambda: return `/(${value.arity}}.<code>`
         case NodeKind.Quote: return `'(${boundToString(value.target)})`
         case NodeKind.Array: return `[${value.values.map(v => valueToString(v, set)).join(", ")}]`
         case NodeKind.Record: {
@@ -19,7 +19,7 @@ export function valueToString(value: Value, set?: FileSet): string {
             const stack = value.stack
             const position = set?.position(value)?.display()
             const location = position ? ` ${position}` : ''
-            const stackDump = stack && set ? `\n ${ 
+            const stackDump = stack && set ? `\n  ${
                 stack.map(v => set?.position({start: v})?.display()).join("\n  ")
             }` : ''
             return `Error${location}: ${value.message}${stackDump}`

@@ -17,7 +17,7 @@ export interface File {
 
 export interface FileSet {
     file(locaton: Location): File | undefined
-    position(location: Location): Position | undefined    
+    position(location: Location): Position | undefined
 }
 
 export interface FileBuilder {
@@ -39,7 +39,7 @@ class FileSetBuilderImpl implements FileSetBuilder {
     private lastBase = 1
     private bases: number[] = []
     files: FileImpl[] = []
-    
+
     file(fileName: string, size: number): FileBuilder {
         const base = this.lastBase
         this.lastBase += size
@@ -83,7 +83,7 @@ class FileBuilderImpl implements FileBuilder {
 
 class FileSetImpl implements FileSet {
     private files: FileImpl[]
-    
+
     constructor(files: FileImpl[]) {
         this.files = files
     }
@@ -131,7 +131,7 @@ class PositionImpl implements Position {
         this.fileName = fileName
         this.line = line
         this.column = column
-    } 
+    }
 
     display(): string {
         return `${this.fileName}:${this.line}:${this.column}`

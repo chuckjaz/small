@@ -529,7 +529,9 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const bindings: Value[] = []
                 const letContext = [bindings, ...context]
                 for (const binding of node.bindings) {
-                    bindings.push(resolve(e(letContext, binding)))
+                    const value = resolve(e(letContext, binding))
+                    if (value.kind == NodeKind.Error) return value
+                    bindings.push(value)
                 }
                 return e(letContext, node.body)
             }

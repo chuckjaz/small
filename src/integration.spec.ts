@@ -231,7 +231,7 @@ describe("integration tests", () => {
                     }
                 in t(10)
             `)
-            expect(result).toEqual('Error <test>:5:30: Value cannot be indexed\n <test>:6:31')
+            expect(result).toEqual('Error <test>:5:30: Value cannot be indexed\n  <test>:6:31')
         })
     })
 })

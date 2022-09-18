@@ -1,0 +1,117 @@
+let
+    logs = import "logs",
+    strings = import "strings",
+    ints = import "ints",
+
+    tokens = import "token.sm"
+    Token = tokens.Token,
+    tokenToString = tokens.tokenToString,
+
+    Error = /message.{ message },
+    Result = /(result, lex).{ result, lex },
+    listOf = /item./lex.
+        let
+            parseOne = /lex.match item(lex) {
+                { #result, #lex } in match lex.token {
+                    Token.Comma in match parseOne(lex.next()) {
+                        { result: #results, #lex } in Result([result, ...results], lex),
+                        #_ in Result([result], lex)
+                    },
+                    #_ in match item(lex) {
+                        { result: #results, #lex } in Result([result, ...results], lex)
+                        #else in Result([result], lex)
+                    }
+                },
+                #else in Result([], lex)
+            },
+        in parseOne(lex),
+    oneOf = /spec.
+        let
+            expectedTokens =
+                let
+                    next = /spec.match spec {
+                        [] in [],
+                        [[#h, ...#_], ...#t] in [tokenToString(h), ...next(t)]
+                    }
+                in strings.concat("Expected one of ", strings.join(next(spec), ", ")),
+            unexpected = /lex.Error(strings.concat(expectedTokens, ", received ", tokenToString(lex.token))),
+            allErrors = /n.match n {
+                0 in [unexpected],
+                #_ in [unexpected, ...allErrors(ints.sub(n, 1))]
+            },
+            set = /(s, n, parser).match n {
+                0 in match s {
+                    [#_, ...#ss] in [parser, ...ss],
+                },
+                #_ in match s {
+                    [#h, ...#t] in [h, ...set(t, ints.sub(n, 1), parser)]
+                }
+            },
+            produce = /(a, spec).match spec {
+                [[#token, #parser], ...#rest] in produce(set(a, token, parser), rest),
+                [] in a
+            },
+            table = produce(allErrors(ints.add(Token.Error, 1)), spec)
+        in /lex.table[lex.token](lex),
+    firstOf = /spec./lex.
+        let
+            try = /(spec, last).match spec {
+                [#parser, ...#rest] in
+                    let
+                        result = parser(lex)
+                    in match result {
+                        { #message } in try(rest, result),
+                        #else in else
+                    },
+                [] in last
+            }
+        in try(spec, null),
+    sequenceOf = /(spec, produceResult)./lex.
+        let
+            parse = /(spec, lex).match spec {
+                [#parser, ...#rest] in
+                    let
+                        result = parser(lex)
+                    in match result {
+                        { #message } in result,
+                        { #result, #lex } in
+                            let
+                                restResult = parse(rest, lex)
+                            in match restResult {
+                                { #message } in restResult,
+                                { result: #results, #lex} in Result([result, ...results], lex)
+                            }
+                    },
+                [] in Result([], lex)
+            },
+            parsedResult = parse(spec, lex),
+        in match parsedResult {
+            { #message } in parsedResult,
+            { #result, #lex } in Result(produceResult(result), lex)
+        },
+    postfixOf = /(target, after)./lex.
+        let
+            result = target(lex),
+            loop = /(left, lex).
+                let
+                    result = after(left, lex)
+                in match result {
+                    { #message } in Result(left, lex),
+                    { #result, #lex } in loop(result, lex)
+                }
+        in match result  {
+            { #message } in result,
+            { #result, #lex } in loop(result, lex)
+        },
+    expectToken = /(token, result)./lex.match lex.token {
+        token in Result(result(lex.value), lex.next()),
+        #_ in Error(strings.concat("Expect ", tokenToString(token), ", received ", tokenToString(lex.token)))
+    },
+    expect = /token.expectToken(token, /value.null),
+    tx = /(parser, cb)./lex.let
+            value = parser(lex)
+        in match value {
+            { #message } in value,
+            { #result, #lex} in Result(cb(result), lex)
+        }
+in { Error, Result, listOf, oneOf, firstOf, sequenceOf, postfixOf, expectToken, expect, tx }

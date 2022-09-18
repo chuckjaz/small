@@ -276,7 +276,7 @@ export function parse(lexer: Lexer, name: string = "<text>"): Expression {
                 }
                 return mem(name, value)
             }
-            default: {        
+            default: {
                 const start = lexer.position
                 const name = expectName()
                 if (token as any == Token.Colon) {

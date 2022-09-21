@@ -17,7 +17,7 @@ let
                         { result: #results, #lex } in Result([result, ...results], lex),
                         #_ in Result([result], lex)
                     },
-                    #_ in match item(lex) {
+                    #_ in match parseOne(lex) {
                         { result: #results, #lex } in Result([result, ...results], lex)
                         #else in Result([result], lex)
                     }

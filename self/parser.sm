@@ -76,6 +76,8 @@ let
     ]),
     postfixExpression = postfixOf(primitive, /(left, lex).oneOf([
         [Token.LParen, tx(parenOf(listOf(expression)), /value.ast.Call(left, value))],
-        [Token.LBrack, sequenceOf([expect(Token.LBrack), expression, expect(Token.RBrack)], /values.ast.Index(left, values[1]))]
-    ])(lex))
-in { listOf, expression }
+        [Token.LBrack, sequenceOf([expect(Token.LBrack), expression, expect(Token.RBrack)], /values.ast.Index(left, values[1]))],
+        [Token.Dot, sequenceOf([expect(Token.Dot), name], /values.ast.Select(left, values[1]))]
+    ])(lex)),
+    module = sequenceOf([expression, expect(Token.EOF)], /values.values[0])
+in { listOf, expression, module }

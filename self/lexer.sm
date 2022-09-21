@@ -1,4 +1,5 @@
 let
+    logs = import "logs",
     substr = import "strings".sub,
     concat = import "strings".concat,
     code = import "strings".code,
@@ -69,18 +70,18 @@ let
                     "w" in ident(rest, concat(value, c)),
                     "x" in ident(rest, concat(value, c)),
                     "y" in ident(rest, concat(value, c)),
-                    "z" in loop(rest, concat(value, c)),
-                    "_" in loop(rest, concat(value, c)),
-                    "0" in loop(rest, concat(value, c)),
-                    "1" in loop(rest, concat(value, c)),
-                    "2" in loop(rest, concat(value, c)),
-                    "3" in loop(rest, concat(value, c)),
-                    "4" in loop(rest, concat(value, c)),
-                    "5" in loop(rest, concat(value, c)),
-                    "6" in loop(rest, concat(value, c)),
-                    "7" in loop(rest, concat(value, c)),
-                    "8" in loop(rest, concat(value, c)),
-                    "9" in loop(rest, concat(value, c)),
+                    "z" in ident(rest, concat(value, c)),
+                    "_" in ident(rest, concat(value, c)),
+                    "0" in ident(rest, concat(value, c)),
+                    "1" in ident(rest, concat(value, c)),
+                    "2" in ident(rest, concat(value, c)),
+                    "3" in ident(rest, concat(value, c)),
+                    "4" in ident(rest, concat(value, c)),
+                    "5" in ident(rest, concat(value, c)),
+                    "6" in ident(rest, concat(value, c)),
+                    "7" in ident(rest, concat(value, c)),
+                    "8" in ident(rest, concat(value, c)),
+                    "9" in ident(rest, concat(value, c)),
                     #_ in match value {
                         "false" in ret(text, value, Token.False),
                         "in" in ret(text, value, Token.In),
@@ -116,6 +117,17 @@ let
                     "" in ret(text, null, Token.Error),
                     "\n" in ret(rest, null, Token.Error),
                     "\"" in ret(rest, value, Token.String),
+                    "\\" in let
+                        c = substr(rest, 0, 1),
+                        rrest = substr(rest, 1)
+                    in match c {
+                        "\"" in string(rrest, concat(value, c)),
+                        "\\" in string(rrest, concat(value, c)),
+                        "n" in string(rrest, concat(value, "\n")),
+                        "r" in string(rrest, concat(value, "\r")),
+                        "t" in string(rrest, concat(value, "\t")),
+                        #_ in ret(rrest, null, Token.Error)
+                    },
                     #_ in string(rest, concat(value, c))
                 },
                 dot = /(rest).match substr(rest, 0, 1) {

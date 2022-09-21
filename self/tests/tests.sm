@@ -1,9 +1,19 @@
 let
+    ints = import "ints",
+    strings = import "strings",
     display = /r.match r {
-        ["Passed", #_] in [],
-        [] in [],
-        [[...#nested], ...#rest] in [...display([...nested]), ...display(rest)],
-        #f in f
+        ["Passed", #_] in { result: [], passed: 1, failed: 0 },
+        [] in { result: [], passed: 0, failed: 0 },
+        [[...#nested], ...#rest] in
+            let
+                nestedResult = display([...nested]),
+                restResult = display(rest)
+            in {
+                result: [...nestedResult.result, ...restResult.result],
+                passed: ints.add(nestedResult.passed, restResult.passed),
+                failed: ints.add(nestedResult.failed, restResult.failed)
+            },
+        #f in { result: [f], passed: 0, failed: 1 }
     }
 in
     match display([
@@ -12,6 +22,7 @@ in
         import "ast-string.test.sm",
         import "parser.test.sm"
     ]) {
-        [] in "All tests passed",
+        { result: [], #passed } in strings.concat("All ", ints.string(passed), " tests passed"),
+        { result: #results, #passed, #failed } in [strings.concat("Failed: ", ints.string(failed), " of ", ints.string(ints.add(passed, failed)), " failed"), results],
         #x in x
     }

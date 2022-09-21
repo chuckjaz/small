@@ -1,4 +1,5 @@
 let
+    files = import "files",
     Lexer = import "../lexer.sm".Lexer,
     Token = import "../token.sm".Token,
     expect = /(text, expected).let
@@ -11,7 +12,16 @@ let
     in match result {
         expected in ["Passed", text],
         #_ in ["Failed: Expected", expected, "Received", result]
-    }
+    },
+    lexFile = /fileName.let
+            text = files.readFile(fileName),
+            lex = Lexer(text)
+            loop = /lex.match lex.token {
+                Token.EOF in ["Passed", fileName],
+                Token.Error in ["Failed", fileName],
+                #_ in loop(lex.next())
+            }
+        in loop(lex)
 in [
     expect("A B C", [[Token.Identifier, "A"], [Token.Identifier, "B"], [Token.Identifier, "C"]]),
     expect("This is a test", [
@@ -43,5 +53,6 @@ in [
         [Token.LBrace, null],
         [Token.RBrace, null]
     ]),
-    expect("\"abc\"", [[Token.String, "abc"]])
+    expect("\"abc\"", [[Token.String, "abc"]]),
+    lexFile("self/lexer.sm")
 ]

@@ -82,7 +82,7 @@ describe("lexer", () => {
     })
     it("can scan adjacent tokens", () => {
         l("abc(){}[].,:=/$'#1.0", Token.Identifier, Token.LParen, Token.RParen, Token.LBrace,
-            Token.RBrace, Token.LBrack, Token.RBrack, Token.Dot, Token.Comma, Token.Colon, 
+            Token.RBrace, Token.LBrack, Token.RBrack, Token.Dot, Token.Comma, Token.Colon,
             Token.Equal, Token.Lambda, Token.Dollar, Token.Quote, Token.Hash, Token.Float)
     })
     it("can scan smaller.sm", () => {
@@ -95,14 +95,26 @@ describe("lexer", () => {
             expect(lexer.next()).toBe(Token.String)
             return lexer.value
         }
+        const b = '\\'
+        const q = '\"'
         it("can parse a quote", () => {
-            expect(s(`"${'\\'}${'\"'}"`)).toBe('"')
+            expect(s(`"${b}""`)).toBe('"')
         })
         it("can parse quotes at start and end", () => {
-            expect(s(`"${'\\'}"value${'\\'}""`)).toBe('"value"')
+            expect(s(`"${b}"value${b}""`)).toBe('"value"')
         })
         it("can parse quote in the middle", () => {
-            expect(s(`"front${'\\'}"end"`)).toBe('front"end')
+            expect(s(`"front${b}"end"`)).toBe('front"end')
+        })
+        it("can parse multi-quotes", () => {
+            expect(s(` "${b}"" `)).toBe('"')
+        })
+        it("can parse backslash", () => {
+            expect(s(` "${b}${b}" `)).toBe('\\')
+        })
+        it("can parse multiple quotes", () => {
+            l(` "${b}"", value, "${b}""`, Token.String, Token.Comma, Token.Identifier, Token.Comma,
+                Token.String)
         })
     })
 })
@@ -128,7 +140,7 @@ function lf(fileName: string): [Token[], number[], FileSet] {
     }
     fileBuilder.build()
     const set = builder.build()
-    
+
     const lines = text.split('\n')
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i]

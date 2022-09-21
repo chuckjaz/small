@@ -1,6 +1,7 @@
 let
     ast = import "../ast.sm",
     logs = import "logs",
+    files = import "files",
     astString = import "../ast-string.sm".string,
     parser = import "../parser.sm",
     Lexer = import "../lexer.sm".Lexer,
@@ -29,6 +30,16 @@ let
     matches = /(text, value, parser).expect(value, parse(text, parser)),
     identical = /(value, parser).matches(value, value, parser),
     numbers = parser.listOf(number),
+    file = /fileName.
+        let
+            text = files.readFile(fileName),
+            lex = Lexer(text),
+            module = parser.module(lex)
+        in match module {
+            { #message } in ["Failed", fileName, module],
+            { #result } in ["Passed", fileName],
+            #else in ["Failed", "unexpected", else]
+        }
 in [
     [
         expect([], numbers(Lexer(""))),
@@ -49,6 +60,7 @@ in [
         identical("a", parser.expression),
         matches("/a.a", "/(a).a",  parser.expression),
         identical("/(a, b, c).a", parser.expression),
+        identical("/().a", parser.expression),
         identical("let a = 1 in a", parser.expression),
         identical("#a", parser.expression),
         matches("(a)", "a", parser.expression),
@@ -71,7 +83,8 @@ in [
         ],
         [
             identical("match a { a in a }", parser.expression),
-            identical("match [1, 2] { [1, #a] in a, [#b, 2] in b }", parser.expression)
+            identical("match [1, 2] { [1, #a] in a, [#b, 2] in b }", parser.expression),
+            matches("match 1 { a in a  a in a }", "match 1 { a in a, a in a }", parser.expression)
         ],
         [
             identical("a[a]", parser.expression),
@@ -83,5 +96,13 @@ in [
             identical("a(a, b, c)", parser.expression),
             identical("a(a)(b)(c)", parser.expression),
         ]
+    ],
+    [
+        file("self/ast-string.sm"),
+        file("self/ast.sm"),
+        file("self/lexer.sm"),
+        file("self/parser-combinator.sm"),
+        file("self/parser.sm"),
+        file("self/token.sm")
     ]
 ]

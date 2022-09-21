@@ -135,6 +135,7 @@ export class Lexer {
                                     case "r": strValue += "\r"; break
                                     case "n": strValue += "\n"; break
                                     case "\"": strValue += "\""; break
+                                    case "\\": strValue += "\\"; break
                                     case "t": strValue += "\t"; break
                                     default:
                                         result = Token.Error

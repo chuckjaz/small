@@ -1,6 +1,6 @@
 import { Lexer } from "./lexer";
 import { parse } from "./parser";
-import { ErrorValue, evaluate, importedOf, Value } from "./eval";
+import { ArrayValue, ErrorValue, evaluate, importedOf, Value } from "./eval";
 import { Flags } from "./flags";
 
 import * as fs from 'fs'
@@ -157,9 +157,23 @@ function str(value: string): LiteralString {
     }
 }
 
+function arr(values: Value[]): ArrayValue {
+    return {
+        kind: NodeKind.Array,
+        values
+    }
+}
+
 function recordModule(name: string, module: Value): Value {
     modules.set(name, module)
     return module
+}
+
+function extendArray(a: Value[], size: number, value: Value): Value[] {
+    if (a.length >= size) return a
+    const result = [...a]
+    while (result.length < size) result.push(value)
+    return result
 }
 
 function imports(name: string, relativeTo: string): Value {
@@ -172,6 +186,11 @@ function imports(name: string, relativeTo: string): Value {
             len: ([s]) => int(stringOf(s).length),
             code: ([s]) => int(stringOf(s).charCodeAt(0)),
             join: ([a, p]) => str(arrayOf(a).map(v => stringOf(v)).join(opStringOf(p)))
+        }))
+        case "arrays": return recordModule(name, intrinsicsOf({
+            len: ([a]) => int(arrayOf(a).length),
+            slice: ([a, start, end]) => arr(arrayOf(a).slice(numberOf(start), numberOf(end))),
+            extend: ([a, size, value]) => arr(extendArray(arrayOf(a), numberOf(size), value))
         }))
         case "ints": return recordModule(name, intrinsicsOf({
             add: ([left, right]) => int(numberOf(left) + numberOf(right)),
@@ -187,6 +206,9 @@ function imports(name: string, relativeTo: string): Value {
         case "logs": return recordModule(name, intrinsicsOf({
             log: file => { console.log(file.map(v => valueToString(v, setBuilder.build())).join(", ")); return file[file.length - 1] },
             error: ([message]) => errorValue(valueToString(message))
+        }))
+        case "files": return recordModule(name, intrinsicsOf({
+            readFile: ([fileName]) => str(fs.readFileSync(stringOf(fileName), 'utf-8'))
         }))
     }
 

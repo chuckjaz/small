@@ -1,0 +1,383 @@
+let
+    logs = import "logs",
+    bools = import "bools",
+    ints = import "ints",
+    arrays = import "arrays",
+    strings = import "strings",
+
+    ast = import "ast.sm",
+    LiteralBoolean = ast.LiteralBoolean,
+    LiteralInt = ast.LiteralInt,
+    LiteralNull = ast.LiteralNull,
+    LiteralString = ast.LiteralString,
+    Reference = ast.Reference,
+    Let = ast.Let,
+    Binding = ast.Binding,
+    Lambda = ast.Lambda,
+    Call = ast.Call,
+    Record = ast.Record,
+    Member = ast.Member,
+    Array = ast.Array,
+    Select = ast.Select,
+    Index = ast.Index,
+
+    BoundReference = /(name, level, index).{ BoundReference, name, level, index },
+    BoundLet = /(bindings, body).{ BoundLet, bindings, body },
+    BoundImport = /(name, value).{ BoundImport, name, value },
+    BoundLambda = /(arity, body).{ BoundLambda, arity, body },
+    BoundCall = /(target, args).{ BoundCall, target, args },
+    BoundSelect = /(target, name).{ BoundSelect, target, name },
+    BoundIndex = /(target, index).{ BoundIndex, target, index },
+    BoundRecord = /(symbols, class, members).{ BoundRecord, symbols, class, members },
+    BoundArray = /values.{ BoundArray, values },
+    BoundProjection = /target.{ BoundProjection, target },
+    BoundMatch = /(target, clauses).{ BoundMatch, target, clauses },
+    BoundMatchClause = /(pattern, value).{ BoundMatchClause, pattern, value },
+    BoundVariable = /index.{ BoundVariable, index },
+
+    BindingContext = /scope.{ BindingContext, scope },
+
+    Result = /(result, context).{ result, context },
+    Error = /message.{ message },
+
+    ile = /(a, b).match a {
+        b in true,
+        #_ in ints.less(a, b)
+    },
+
+    fold = /(r, cb).match r {
+        { result: [], #context } in r
+        { result: [#h, ...#t], #context } in
+            let
+                head = cb(h, context)
+            in match head {
+                { #message } in head,
+                #else in
+                    let
+                        tail = fold(Result(t, context), cb)
+                    in match tail {
+                        { result: #tail, #context } in Result([head, ...tail], context),
+                        { #message } in tail
+                    },
+
+            }
+        { #message } in r
+    },
+    map = /(r, cb).
+        match r {
+            { result: #a, #context } in
+                let
+                    len = arrays.len(a),
+                    loop = /(result, context, i).match i {
+                        len in Result(result, context),
+                        #else in
+                            let
+                                cbr = cb(a[i], context)
+                            in match cbr {
+                                { result: #cbr, #context } in loop(arrays.set(result, i, cbr), context, ints.add(i, 1)),
+                                { #message } in cbr
+                            }
+                    }
+                in loop(arrays.extend([], len, null), context, 0),
+            { #message } in r
+        },
+
+    Symbols = /().
+        let
+            ret = /names.{
+                symbolOf: /name.symbolOf(name, names),
+                nameOf: /symbol.names[symbol]
+            },
+            symbolOf = /(name, names).
+                let
+                    length = arrays.len(names),
+                    find = /index.match index {
+                        length in Result(length, [...names, name]),
+                        #_  in match names[index] {
+                            name in Result(index, names),
+                            #_ in find(ints.add(index, 1))
+                        }
+                    },
+                in match find(0) {
+                    { #result, #context } in Result(result, ret(context)),
+                    #else in Error("not found")
+                }
+        in ret([]),
+
+    Ref = /(level, index).{ level, index },
+    Scope = /().
+        let
+            State = /(symbols, level, index).{ symbols, level, index },
+            ret = /state.{
+                find: /symbol.find(symbol, state),
+                define: /symbol.Result(null, define(symbol, state)),
+                level: /().Result(null, ret(State(state.symbols, ints.add(state.level, 1), 0)))
+            },
+            invert = /(ref, level).Ref(ints.sub(level, ref.level), ref.index),
+            find = /(symbol, state).match ints.less(symbol, arrays.len(state.symbols)) {
+                true in Result(invert(state.symbols[symbol], state.level), ret(state)),
+                #_ in Error("not found")
+            },
+            define = /(symbol, state).
+                let
+                    ref = Ref(state.level, state.index),
+                    newIndex = ints.add(state.index, 1),
+                    newSymbols = arrays.set(state.symbols, symbol, ref)
+                in ret(State(newSymbols, state.level, newIndex))
+        in ret(State([], ints.sub(0, 1), 0)),
+    Context = /(symbols, scope).{ symbols, scope },
+
+    with = /(result, k).match result {
+        { #message } in result,
+        { #result, #context } in k(result, context)
+    },
+    return = Result,
+    bind = /(node, context).
+        let
+            withSymbols = /(result, context, k).with(result, /(node, symbols).k(node, { symbols, ...context })),
+            withScope = /(result, context, k).with(result, /(node, scope).k(node, { scope, ...context })),
+            b = /(node, context).match node {
+                { LiteralBoolean } in return(node, context),
+                { LiteralInt } in return(node, context),
+                { LiteralString } in return(node, context),
+                { LiteralNull } in return(node, context),
+                { Reference, #name } in
+                    withSymbols(context.symbols.symbolOf(name), context, /(symbol, context).
+                        withScope(context.scope.find(symbol), context, /(ref, context).
+                            return(BoundReference(name, ref.level, ref.index), context)
+                        )
+                    ),
+                { Let, #bindings, #body } in
+                    let
+                        previousScope = Result(null, context.scope)
+                    in withScope(
+                        context.scope.level(),
+                        context,
+                        /(_, context).
+                            with(
+                                map(
+                                    Result(bindings, context),
+                                    /(binding, context).
+                                        withSymbols(context.symbols.symbolOf(binding.name), context, /(symbol, context).
+                                            withScope(context.scope.define(symbol), context, return)
+                                        )
+                                ),
+                                /(_, context).
+                                    with(
+                                        map(
+                                            Result(bindings, context),
+                                            /(binding, context).b(binding.value, context)
+                                        ),
+                                        /(bindings, context).
+                                            with(
+                                                b(body, context),
+                                                /(body, context).
+                                                    withScope(
+                                                        previousScope, context,
+                                                        /(_, context).return(BoundLet(bindings, body), { scope: previousScope, ...context })
+                                                    )
+                                            )
+                                    )
+                            )
+                    ),
+                { Lambda, #parameters, #body } in
+                    let
+                        previousScope = context.scope
+                    in withScope(context.scope.level(), context, /(_, context).
+                        with(
+                            map(Result(parameters, context), /(parameter, context).
+                                withSymbols(context.symbols.symbolOf(parameter), context, /(symbol, context).
+                                    withScope(context.scope.define(symbol), context, return)
+                                )
+                            ),
+                            /(_, context).
+                                with(b(body, context), /(body, context).
+                                    return(BoundLambda(arrays.len(parameters), body), { scope: previousScope, ...context })
+                                )
+                        )
+                    ),
+                { Call, #target, #args } in with(b(target, context), /(target, context).
+                    with(map(Result(args, context), b), /(args, context).
+                        return(BoundCall(target, args), context)
+                    )
+                ),
+                { Record, #members } in with(
+                    map(Result(members, context), /(member, context).
+                        withSymbols(context.symbols.symbolOf(member.name), context, return)
+                    ),
+                    /(symbols, context).
+                        with(map(Result(members, context), /(member, context).b(member.value, context)), /(members, context).
+                            return(BoundRecord(symbols, symbolsToClass(symbols), members), context)
+                        )
+                ),
+                { Array, #values } in with(
+                    map(Result(values, context), b),
+                    /(values, context).return(BoundArray(values,), context)
+                ),
+                { Select, #target, #name } in
+                    withSymbols(context.symbols.symbolOf(name), context, /(symbol, context).
+                        with(b(target, context), /(target, context).return(BoundSelect(target, symbol), context))
+                    )
+                { Index, #target, #index } in
+                    with(b(target, context), /(target, context).
+                        with(b(index, context), /(index, context).
+                            return(BoundIndex(target, index), context)
+                        )
+                    )
+            }
+        in b(node, context),
+
+    vmapi = /(values, cb).
+        let
+            len = arrays.len(values),
+            loop = /(result, i).
+                match i {
+                    len in result,
+                    #else in loop(arrays.set(result, i, cb(values[i], i)), ints.add(i, 1))
+                }
+        in loop(arrays.extend([], len, null), 0),
+    vmap = /(values, cb).
+        let
+            len = arrays.len(values),
+            loop = /(result, i).
+                match i {
+                    len in result,
+                    #else in loop(arrays.set(result, i, cb(values[i])), ints.add(i, 1))
+                }
+        in loop(arrays.extend([], len, null), 0),
+    vmapv = /(values, cb).
+        let
+            len = arrays.len(values),
+            loop = /(result, i).
+                match i {
+                    len in result,
+                    #else in loop(arrays.set(result, i, cb(values[i], i, values)), ints.add(i, 1))
+                }
+        in loop(arrays.extend([], len, null), 0),
+    smap = /(values, cb).
+        let
+            len = arrays.len(values),
+            result = arrays.extend([], len, null),
+            loop = /i.
+                match i {
+                    len in result,
+                    #else in 
+                        let
+                            _ = arrays.set!(result, i, cb(values[i], i, result))
+                        in loop(ints.add(i, 1))
+                } 
+        in loop(0),
+    vfold = /(p, values, cb).
+        let
+            len = arrays.len(values),
+            loop = /(p, i).match i {
+                len in p,
+                #else in loop(cb(p, values[i]), ints.add(i, 1))
+            }
+        in loop(p, 0),
+    imax = /values.vfold(0, values, /(p, v).
+        match ints.less(p, v) {
+            true in v,
+            false in p
+        }
+    ),
+    LambdaValue = /(context, body).{ LambdaValue, context, body },
+    RecordValue = /(class, fields).{ RecordValue, class, fields },
+    ArrayValue = /values.{ ArrayValue, values },
+    ErrorValue = /message.{ ErrorValue, message },
+    extract = /v.match v {
+        { #message } in message,
+        { #result } in result
+    },
+    valueToString = /(value, symbols).match value {
+        { LiteralBoolean, #value } in bools.string(value),
+        { LiteralInt, #value } in ints.string(value),
+        { LiteralNull } in "null",
+        { LiteralString, #value } in strings.concat("\"", value, "\""),
+        { LambdaValue } in "<code>",
+        { ArrayValue, #values } in strings.concat("[", strings.join(vmap(values, /v.valueToString(v, symbols)), ", ") "]"),
+        { RecordValue, #fields, #class } in
+            let
+                memberToString = /(symbol, value).strings.concat(symbols.nameOf(symbol), ": ", valueToString(value, symbols))
+            in strings.concat("{ ", strings.join(vmapi(fields, /(value, i).memberToString(class[i], value)), ", ")," }")
+    },
+    classFromSymbols = /symbols.
+        let
+            len = arrays.len(symbols),
+            maxSymbol = imax(symbols),
+            loop = /(class, i).match i {
+                len in class,
+                #else in loop(arrays.set(class, symbols[i], i), ints.add(i, 1))
+            }
+        in loop(arrays.expect([], maxSymbol, null), 0),
+    symbolsToClass = /class.
+        let
+            len = arrays.len(class),
+            loop = /(symbols, i).match i {
+                len in symbols,
+                #else in let
+                    symbol = class[i],
+                    n = ints.add(i, 1)
+                in match symbol {
+                    null in loop(symbols, n),
+                    #else in loop(arrays.set(symbols, symbol, i), n)
+                }
+            }
+        in loop([], 0),
+    evaluate = /expression.
+        let
+            e = /(context, expression).match expression {
+                { LiteralBoolean } in expression,
+                { LiteralInt } in expression,
+                { LiteralString } in expression,
+                { LiteralNull } in expression,
+                { BoundReference, #level, #index, #name } in context[level][index],
+                { BoundLet, #bindings, #body } in
+                    let
+                        bound = smap(bindings, /(v, i, vs).e([vs, ...context], v))
+                    in e([bound, ...context], body),
+                { BoundLambda, #body } in LambdaValue(context, body),
+                { BoundCall, #target, #args } in
+                    let
+                        arguments = vmap(args, /arg.e(context, arg)),
+                        lambda = e(context, target)
+                    in match lambda {
+                        { LambdaValue, #context, #body } in e([arguments, ...context], body),
+                        #else in ErrorValue("Target cannot be called")
+                    },
+                { BoundSelect, #target, #name } in
+                    let
+                        rec = e(context, target)
+                    in match rec {
+                        { RecordValue, #fields, #class } in fields[class[name]],
+                        { ErrorValue } in rec
+                        #else in ErrorValue("Member not defined")
+                    },
+                { BoundIndex, #target, #index } in
+                    let
+                        arr = e(context, target),
+                        i = e(context, index)
+                    in
+                        match [arr, index] {
+                            [{ ArrayValue, #values }, { LiteralInt, #value }] in values[value],
+                            [{ ErrorValue }, #_] in arr,
+                            [#_, { ErrorValue }] in i
+                            #else in ErrorValue("Invalid index")
+                        },
+                { BoundRecord, #members, #class } in
+                    let
+                        fields = vmap(members, /m.e(context, m))
+                    in RecordValue(class, fields),
+                { BoundArray, #values } in
+                    let
+                        resolved = vmap(values, /v.e(context, v))
+                    in ArrayValue(resolved)
+            }
+        in e([], expression),
+    eval = /node.
+        let
+            bound = bind(node, Context(Symbols(), Scope())),
+        in match bound {
+            { #result, #context } in return(evaluate(result), context)
+        }
+in { Symbols, Scope, Result, Error, map, vmap, evaluate, bind, eval, valueToString }

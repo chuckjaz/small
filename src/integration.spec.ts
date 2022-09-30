@@ -201,7 +201,7 @@ describe("integration tests", () => {
             ee("$1", "Can only splice a quote: 1")
         })
         it("reports a missing match", () => {
-            ee("match 1 { 0 in 1 }", "Match not found: 1 for match 1 { 0 in 1 }")
+            ee("match 1 { 0 in 1 }", "Match not found for 1")
         })
         it("reports a splice error in a quote", () => {
             ee("$'($1)", "Can only splice a quote: 1")

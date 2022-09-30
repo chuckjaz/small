@@ -681,7 +681,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                         return e(matchContext, clause.value)
                     }
                 }
-                return errorValue(node, `Match not found: ${valueToString(target)} for ${boundToString(node)}`)
+                return errorValue(node, `Match not found for ${valueToString(target)}`)
             }
         }
     }

@@ -1,0 +1,42 @@
+let
+    logs = import "logs",
+    ints = import "ints",
+    strings = import "strings",
+    arrays = import "arrays",
+    eval = import "../eval.sm",
+    parser = import "../parser.sm",
+    lexer = import "../lexer.sm",
+    Result = eval.Result,
+    Error = eval.Error,
+    Symbols = eval.Symbols,
+    Scope = eval.Scope,
+    Lexer = lexer.Lexer,
+
+    evaluate = /text.match parser.module(Lexer(text)) {
+        { #result } in 
+            match eval.eval(result) {
+                { #result, context: { #symbols } } in eval.valueToString(result, symbols),
+                { #message } in message
+            },
+        { #message } in message,
+        #else in else
+    },
+
+    expect = /(text, expected).
+        match evaluate(text) {
+            expected in ["Passed", text],
+            #result in ["Failed", text, "expected", expected, "received", result]
+        },
+ in [
+    [expect("1", "1")],
+    [expect("let a = 1 in a", "1")],
+    [expect("[1, 2, 3]", "[1, 2, 3]")],
+    [expect("{ a: 1, b: 2 }", "{ a: 1, b: 2 }")],
+    [expect("[1, 2, 3]", "[1, 2, 3]")],
+    [expect("/x.x", "<code>")],
+    [expect("(/x.x)(1)", "1")],
+    [expect("{a: 1, b: 2}.a", "1")],
+    [expect("[1, 2, 3][0]", "1")],
+    [expect("let a = 1, b = 2 in { a, b }", "{ a: 1, b: 2 }")],
+    [expect("let a = 1, id = /a.a in id(2)", "2")],    
+ ]

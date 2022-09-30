@@ -20,7 +20,8 @@ in
         import "token.test.sm",
         import "lexer.test.sm",
         import "ast-string.test.sm",
-        import "parser.test.sm"
+        import "parser.test.sm",
+        import "eval.test.sm"
     ]) {
         { result: [], #passed } in strings.concat("All ", ints.string(passed), " tests passed"),
         { result: #results, #passed, #failed } in [strings.concat("Failed: ", ints.string(failed), " of ", ints.string(ints.add(passed, failed)), " failed"), results],

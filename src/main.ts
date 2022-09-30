@@ -110,14 +110,14 @@ function numberOf(value: Value): number {
     incorrectValue("an integer", value)
 }
 
-function numberOfU(value: Value | undefined): number | undefined {
+function opNumberOf(value: Value | undefined): number | undefined {
     if (value && value.kind == NodeKind.Literal && value.literal == LiteralKind.Int) return value.value
     return undefined
 }
 
 function stringOf(value: Value): string {
     if (value.kind == NodeKind.Literal && value.literal == LiteralKind.String) return value.value
-    incorrectValue("an string", value)
+    incorrectValue("a string", value)
 }
 
 function opStringOf(value: Value | undefined): string | undefined {
@@ -176,21 +176,33 @@ function extendArray(a: Value[], size: number, value: Value): Value[] {
     return result
 }
 
+function arraySet(a: Value[], index: number, value: Value): Value[] {
+    const result = [...a]
+    result[index] = value
+    return result
+}
+
 function imports(name: string, relativeTo: string): Value {
     const mod = modules.get(name)
     if (mod !== undefined) return mod
     switch (name) {
         case "strings": return recordModule(name, intrinsicsOf({
             concat: file => str(file.map(stringOf).join("")),
-            sub: ([s, start, end]) => str(stringOf(s).substring(numberOf(start), numberOfU(end))),
+            sub: ([s, start, end]) => str(stringOf(s).substring(numberOf(start), opNumberOf(end))),
             len: ([s]) => int(stringOf(s).length),
             code: ([s]) => int(stringOf(s).charCodeAt(0)),
             join: ([a, p]) => str(arrayOf(a).map(v => stringOf(v)).join(opStringOf(p)))
         }))
         case "arrays": return recordModule(name, intrinsicsOf({
             len: ([a]) => int(arrayOf(a).length),
-            slice: ([a, start, end]) => arr(arrayOf(a).slice(numberOf(start), numberOf(end))),
-            extend: ([a, size, value]) => arr(extendArray(arrayOf(a), numberOf(size), value))
+            slice: ([a, start, end]) => arr(arrayOf(a).slice(numberOf(start), opNumberOf(end))),
+            extend: ([a, size, value]) => arr(extendArray(arrayOf(a), numberOf(size), value)),
+            set: ([a, index, value]) => arr(arraySet(arrayOf(a), numberOf(index), value)),
+            "set!": ([a, index, value]) => {
+                const arr = arrayOf(a)
+                arr[numberOf(index)] = value
+                return a
+            },
         }))
         case "ints": return recordModule(name, intrinsicsOf({
             add: ([left, right]) => int(numberOf(left) + numberOf(right)),

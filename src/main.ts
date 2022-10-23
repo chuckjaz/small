@@ -7,13 +7,15 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { valueToString } from "./value-string";
 import { Expression, LiteralBoolean, LiteralInt, LiteralKind, LiteralString, NodeKind } from "./ast";
-import { fileSetBuilder, FileSetBuilder } from "./files";
+import { fileSet } from "./files";
+import { debug } from "./debug";
+import { TextDebugger } from "./text-debug";
 
 const modules = new Map<string, Value>()
-const setBuilder = fileSetBuilder()
+const set = fileSet()
 
 function p(text: string, fileName: string): Expression {
-    const file = setBuilder.file(fileName, text.length)
+    const file = set.declare(fileName, text.length)
     const lexer = new Lexer(text, file)
     const result = parse(lexer, fileName)
     file.build()
@@ -29,7 +31,6 @@ export function run(fileName: string): Value {
         return result
     } catch (e) {
         if ('start' in (e as any)) {
-            const set = setBuilder.build()
             const position = set.position(e as any)
             if (position) {
                 console.log(`${position.display()}: ${(e as any).message}`)
@@ -45,11 +46,45 @@ export function run(fileName: string): Value {
     }
 }
 
+export function runDebug(fileName: string): Value {
+    try {
+        const dirName = path.dirname(fileName)
+        const text = readFile(fileName)
+        const value = p(text, fileName)
+        const controller = new TextDebugger(set, fileText)
+        const result = debug(
+            value,
+            controller,
+            (name) => imports(name, dirName)
+        )
+        return result
+    } catch (e) {
+        if ('start' in (e as any)) {
+            const position = set.position(e as any)
+            if (position) {
+                console.log(`${position.display()}: ${(e as any).message}`)
+                return {
+                    kind: NodeKind.Literal,
+                    start: 0,
+                    literal: LiteralKind.Null,
+                    value: null
+                }
+            }
+        }
+        throw e
+    }
+}
+
+let fileText: Map<string, string>
 function readFile(sourceFileName: string): string {
-    return fs.readFileSync(sourceFileName, 'utf-8')
+    const text =  fs.readFileSync(sourceFileName, 'utf-8')
+    fileText?.set(sourceFileName, text)
+    return text
 }
 
 const flags = new Flags()
+
+flags.boolean("debug", "Debug the file", false, "d")
 
 flags.parse(process.argv.slice(2))
 
@@ -64,9 +99,14 @@ if (flags.args.length != 1) {
     process.exit(2)
 }
 
+
 try {
-    const result = run(flags.args[0])
-    console.log(valueToString(result, setBuilder.build()))
+    const filename = flags.args[0]
+    if (flags.options.debug) {
+        fileText = new Map()
+    }
+    const result = flags.options.debug ? runDebug(filename) : run(filename)
+    console.log(valueToString(result, set))
 } catch (e: any) {
     if ('line' in e) {
         console.log(e.message)
@@ -216,7 +256,7 @@ function imports(name: string, relativeTo: string): Value {
             string: ([value]) => str(`${booleanOf(value)}`)
         }))
         case "logs": return recordModule(name, intrinsicsOf({
-            log: file => { console.log(file.map(v => valueToString(v, setBuilder.build())).join(", ")); return file[file.length - 1] },
+            log: file => { console.log(file.map(v => valueToString(v, set)).join(", ")); return file[file.length - 1] },
             error: ([message]) => errorValue(valueToString(message))
         }))
         case "files": return recordModule(name, intrinsicsOf({
@@ -228,7 +268,7 @@ function imports(name: string, relativeTo: string): Value {
     const fileMod = modules.get(fileName)
     if (fileMod !== undefined) return fileMod
     if (fs.existsSync(fileName)) {
-        return recordModule(fileName, run(fileName))
+        return recordModule(fileName, flags.options.debug ? runDebug(fileName) : run(fileName))
     }
     return errorValue(`Cannot find '${name}'`)
 }

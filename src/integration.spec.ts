@@ -1,7 +1,7 @@
 import { Expression, NodeKind } from "./ast"
 import { evaluate } from "./eval"
 import { evbx, simpleImports } from "./eval.spec"
-import { fileSetBuilder } from "./files"
+import { fileSet } from "./files"
 import { Lexer } from "./lexer"
 import { parse } from "./parser"
 import { valueToString } from "./value-string"
@@ -257,13 +257,12 @@ function ee(text: string, message: string) {
 }
 
 function es(text: string, fileName: string = '<test>'): string {
-    const setBuilder = fileSetBuilder()
-    const file = setBuilder.file(fileName, text.length)
+    const set = fileSet()
+    const file = set.declare(fileName, text.length)
     const lexer = new Lexer(text, file)
     const expression = parse(lexer, fileName)
     file.build()
     const value = evaluate(expression, simpleImports)
     expect(value.kind).toBe(NodeKind.Error)
-    const set = setBuilder.build()
     return valueToString(value, set)
 }

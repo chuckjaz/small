@@ -2,7 +2,7 @@ import { Lexer } from "./lexer"
 import { Token } from "./token"
 
 import * as fs from 'fs'
-import { FileSet, fileSetBuilder } from "./files"
+import { FileSet, fileSet } from "./files"
 
 describe("lexer", () => {
     it("can scan an identifier", () => {
@@ -129,8 +129,8 @@ function l(text: string, ...tokens: Token[]) {
 
 function lf(fileName: string): [Token[], number[], FileSet] {
     const text = fs.readFileSync(fileName, 'utf-8')
-    const builder = fileSetBuilder()
-    const fileBuilder = builder.file(fileName, text.length)
+    const set = fileSet()
+    const fileBuilder = set.declare(fileName, text.length)
     const lexer = new Lexer(text, fileBuilder)
     const tokens: Token[] = []
     const positions: number[] = []
@@ -139,7 +139,6 @@ function lf(fileName: string): [Token[], number[], FileSet] {
         tokens.push(token)
     }
     fileBuilder.build()
-    const set = builder.build()
 
     const lines = text.split('\n')
     for (let i = 0; i < tokens.length; i++) {

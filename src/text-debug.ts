@@ -31,6 +31,7 @@ export class TextDebugger implements DebugController {
         this.command("quit", () => terminate, "Terminate the debugging session", "q")
         this.command("run", () => run, "Run the to the next break-point", "r")
         this.command("trace", this.trace.bind(this), "Print the stack", "bt")
+        this.command("files", this.files.bind(this), "Print the current list of files active")
         this.command("help", this.help.bind(this), "Print this message", "h", "?")
     }
 
@@ -95,6 +96,13 @@ export class TextDebugger implements DebugController {
             const location = fileSet.position({ start: frame.location })
             console.log(location?.display())
         }
+        return stopped
+    }
+
+    private files(): undefined {
+        for (const file of this.fileText.keys()) {
+            console.log(file)
+        }   
         return stopped
     }
 

@@ -13,9 +13,11 @@ export interface File {
     readonly fileName: string
     readonly size: number
     position(location: Location): Position | undefined
+    lineRange(line: number): { start: number, end: number }
 }
 
 export interface FileSet {
+    declare(fileName: string, size: number): FileBuilder
     file(locaton: Location): File | undefined
     position(location: Location): Position | undefined
 }
@@ -26,28 +28,29 @@ export interface FileBuilder {
     build(): File
 }
 
-export interface FileSetBuilder {
-    file(fileName: string, size: number): FileBuilder
-    build(): FileSet
+export function fileSet(): FileSet {
+    return new FileSetImpl()
 }
 
-export function fileSetBuilder(): FileSetBuilder {
-    return new FileSetBuilderImpl()
-}
-
-class FileSetBuilderImpl implements FileSetBuilder {
+class FileSetImpl implements FileSet {
     private lastBase = 1
     private bases: number[] = []
     files: FileImpl[] = []
 
-    file(fileName: string, size: number): FileBuilder {
+    declare(fileName: string, size: number): FileBuilder {
         const base = this.lastBase
         this.lastBase += size
         return new FileBuilderImpl(fileName, base, size, this)
     }
 
-    build(): FileSet {
-        return new FileSetImpl(this.files)
+    file(location: Location): File | undefined {
+        const index = search(this.files, location.start, numberCompare, keyOfFile)
+        const fileIndex = index < 0 ? -index - 2 : index
+        return this.files[fileIndex]
+    }
+
+    position(location: Location): Position | undefined {
+        return this.file(location)?.position(location)
     }
 }
 
@@ -56,13 +59,13 @@ class FileBuilderImpl implements FileBuilder {
     base: number
     size: number
     lines: number[] = [0]
-    fileBuilder: FileSetBuilderImpl
+    fileSet: FileSetImpl
 
-    constructor(fileName: string, base: number, size: number, builder: FileSetBuilderImpl) {
+    constructor(fileName: string, base: number, size: number, fileSet: FileSetImpl) {
         this.fileName = fileName
         this.base = base
         this.size = size
-        this.fileBuilder = builder
+        this.fileSet = fileSet
     }
 
     addLine(offset: number): FileBuilder {
@@ -76,26 +79,8 @@ class FileBuilderImpl implements FileBuilder {
 
     build(): File {
         const file = new FileImpl(this.fileName, this.base, this.size, this.lines)
-        insert(this.fileBuilder.files, file, fileCompare)
+        insert(this.fileSet.files, file, fileCompare)
         return file
-    }
-}
-
-class FileSetImpl implements FileSet {
-    private files: FileImpl[]
-
-    constructor(files: FileImpl[]) {
-        this.files = files
-    }
-
-    file(location: Location): File | undefined {
-        const index = search(this.files, location.start, numberCompare, keyOfFile)
-        const fileIndex = index < 0 ? -index - 2 : index
-        return this.files[fileIndex]
-    }
-
-    position(location: Location): Position | undefined {
-        return this.file(location)?.position(location)
     }
 }
 
@@ -119,6 +104,12 @@ class FileImpl implements File {
         const lineOffset = index < 0 ? -index - 2 : index
         const columnOffset = offset - this.lines[lineOffset]
         return new PositionImpl(this.fileName, lineOffset + 1, columnOffset + 1)
+    }
+
+    lineRange(line: number): { start: number, end: number } {
+        if (line > 0 && line < this.lines.length)
+            return { start: this.lines[line - 1], end: this.lines[line] }
+        return { start: 0, end: 0 }
     }
 }
 

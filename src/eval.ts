@@ -1,6 +1,5 @@
-import { Array, Expression, Literal, LiteralInt, LiteralKind, Member, NodeKind, Projection, Record, Variable } from "./ast";
+import { Expression, Literal, LiteralInt, LiteralKind, NodeKind } from "./ast";
 import { Location } from './files'
-import { Token } from "./token";
 import { valueToString } from "./value-string";
 
 const enum BoundKind {
@@ -18,7 +17,9 @@ const enum BoundKind {
     Splice,
     Match,
     MatchClause,
-    Variable
+    Variable,
+    Debug,
+    LambdaBody,
 }
 
 interface BoundReference {
@@ -44,6 +45,7 @@ interface BoundImport {
 
 interface BoundLambda {
     kind: BoundKind.Lambda
+    start: number
     arity: number
     body: BoundExpression
 }
@@ -121,6 +123,18 @@ interface BoundVariable {
     index: number
 }
 
+interface BoundDebug {
+    kind: BoundKind.Debug
+    start: number
+    value: BoundExpression
+}
+
+interface BoundLambdaBody {
+    kind: BoundKind.LambdaBody
+    start: number
+    body: BoundExpression
+}
+
 export type BoundExpression =
     Literal |
     ErrorValue |
@@ -137,7 +151,9 @@ export type BoundExpression =
     BoundSplice |
     BoundMatch |
     BoundProjection |
-    BoundVariable
+    BoundVariable |
+    BoundDebug |
+    BoundLambdaBody
 
 interface ContextBinding {
     level: number
@@ -249,6 +265,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const body = b(lambdaContext, node.body)
                 return {
                     kind: BoundKind.Lambda,
+                    start: node.start,
                     arity: indexes.size,
                     body
                 }
@@ -424,6 +441,7 @@ export interface QuoteValue {
 
 export interface LambdaValue {
     kind: NodeKind.Lambda
+    start: number
     context: CallContext
     arity: number
     body: BoundExpression
@@ -487,7 +505,122 @@ export function valueEquals(a: Value, b: Value): boolean {
     return false
 }
 
-function boundEvaluate(expression: BoundExpression): Value {
+export interface Debugger {
+    startFunction(location: number): void
+    endFunction(location: number): void
+    statement(location: number): boolean
+}
+
+function debuggerTransform(node: BoundExpression): BoundExpression {
+
+    function wrap(node: BoundExpression): BoundExpression {
+        if (node.kind == BoundKind.Debug) return node
+        if ('start' in node) {
+            return {
+                kind: BoundKind.Debug,
+                start: node.start,
+                value: node
+            }
+        }
+        return node
+    }
+
+    function rwrap(node: BoundExpression): BoundExpression {
+        return wrap(debuggerTransform(node))
+    }
+
+    function wrapBody(node: BoundExpression, start: number): BoundExpression {
+        return {
+            kind: BoundKind.LambdaBody,
+            start,
+            body: node
+        }
+    }
+
+    switch (node.kind) {
+        case NodeKind.Literal: return node
+        case NodeKind.Error: return node
+        case BoundKind.Reference: return node
+        case BoundKind.Projection: return node
+        case BoundKind.Let:
+            return {
+                kind: BoundKind.Let,
+                bindings: node.bindings.map(debuggerTransform),
+                body: rwrap(node.body)
+            }
+        case BoundKind.Import: return node
+        case BoundKind.Lambda:
+            return {
+                kind: BoundKind.Lambda,
+                start: node.start,
+                arity: node.arity,
+                body: wrapBody(rwrap(node.body), node.start)
+            }
+        case BoundKind.Call:
+            return wrap({
+                kind: BoundKind.Call,
+                args: node.args.map(debuggerTransform),
+                target: debuggerTransform(node.target),
+                start: node.start
+            })
+        case BoundKind.Record:
+            return {
+                kind: BoundKind.Record,
+                members: node.members.map(debuggerTransform),
+                symbols: node.symbols
+            }
+        case BoundKind.Array:
+            return {
+                kind: BoundKind.Array,
+                values: node.values.map(debuggerTransform),
+                start: node.start
+            }
+        case BoundKind.Select:
+            return {
+                kind: BoundKind.Select,
+                target: debuggerTransform(node.target),
+                symbol: node.symbol,
+                name: node.name,
+                start: node.start
+            }
+        case BoundKind.Index:
+            return {
+                kind: BoundKind.Index,
+                target: debuggerTransform(node.target),
+                index: debuggerTransform(node.index),
+                start: node.start
+            }
+        case BoundKind.Quote: return node
+        case BoundKind.Splice:
+            return {
+                kind: BoundKind.Splice,
+                target: debuggerTransform(node.target),
+                start: node.start
+            }
+        case BoundKind.Match:
+            return {
+                kind: BoundKind.Match,
+                target: debuggerTransform(node.target),
+                clauses: node.clauses.map(clause => {
+                    return {
+                        kind: BoundKind.MatchClause,
+                        size: clause.size,
+                        pattern: debuggerTransform(clause.pattern),
+                        value: rwrap(clause.value)
+                    }
+                }),
+                start: node.start
+            }
+        case BoundKind.Variable: return node
+        case BoundKind.Debug: return node
+        case BoundKind.LambdaBody: return node
+    }
+}
+
+function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
+    if (dbg) {
+        expression = debuggerTransform(expression)
+    }
     return resolve(e([], expression))
 
     type Continue = () => Step
@@ -649,6 +782,7 @@ function boundEvaluate(expression: BoundExpression): Value {
             case BoundKind.Lambda: {
                 return {
                     kind: NodeKind.Lambda,
+                    start: node.start,
                     context,
                     arity: node.arity,
                     body: node.body
@@ -683,6 +817,19 @@ function boundEvaluate(expression: BoundExpression): Value {
                 }
                 return errorValue(node, `Match not found for ${valueToString(target)}`)
             }
+            case BoundKind.Debug: {
+                const value = node.value
+                if (dbg?.statement(node.start) == false) {
+                    return errorValue(node, "Terminate")
+                }
+                return e(context, node.value)
+            }
+            case BoundKind.LambdaBody: {
+                dbg?.startFunction(node.start)
+                const value = e(context, node.body)
+                dbg?.endFunction(node.start)
+                return value
+            }
         }
     }
 
@@ -706,6 +853,7 @@ function boundEvaluate(expression: BoundExpression): Value {
                 const body = quote(context, node.body)
                 return {
                     kind: BoundKind.Lambda,
+                    start: node.start,
                     arity: node.arity,
                     body
                 }
@@ -782,6 +930,22 @@ function boundEvaluate(expression: BoundExpression): Value {
                     start: node.start,
                     target,
                     clauses
+                }
+            }
+            case BoundKind.Debug: {
+                const value = quote(context, node.value)
+                return {
+                    kind: BoundKind.Debug,
+                    start: node.start,
+                    value
+                }
+            }
+            case BoundKind.LambdaBody: {
+                const body = quote(context, node.body)
+                return {
+                    kind: BoundKind.LambdaBody,
+                    start: node.start,
+                    body
                 }
             }
         }
@@ -1010,9 +1174,9 @@ export function importedOf(name: string, fun: (file: Value[]) => Value): Importe
     }
 }
 
-export function evaluate(expression: Expression, imports?: (name: string) => Value): Value {
+export function evaluate(expression: Expression, imports?: (name: string) => Value, dbg?: Debugger): Value {
     const boundExpression = bind(expression, imports)
-    return boundEvaluate(boundExpression)
+    return boundEvaluate(boundExpression, dbg)
 }
 
 export function classToSymbols(cls: number[]): number[] {
@@ -1027,6 +1191,29 @@ function error(location: Location | null, message: string): never {
     throw err
 }
 
+export function kindToString(kind: number): string {
+    switch (kind) {
+        case NodeKind.Literal: return "Literal"
+        case NodeKind.Error: return "Error"
+        case BoundKind.Reference: return "Reference"
+        case BoundKind.Let: return "Let"
+        case BoundKind.Import: return "Import"
+        case BoundKind.Lambda: return "Lambda"
+        case BoundKind.Call: return "Call"
+        case BoundKind.Record: return "Return"
+        case BoundKind.Array: return "Array"
+        case BoundKind.Select: return "Select"
+        case BoundKind.Index: return "Index"
+        case BoundKind.Quote: return "Quote"
+        case BoundKind.Splice: return "Splice"
+        case BoundKind.Projection: return "Projection"
+        case BoundKind.Match: return "Match"
+        case BoundKind.Variable: return "Variable"
+        case BoundKind.Debug: return "Debug"
+        case BoundKind.LambdaBody: return "LambdaBody"
+    }
+    return `unknown: ${kind}`
+}
 export function boundToString(node: BoundExpression): string {
     switch (node.kind) {
         case NodeKind.Literal: return valueToString(node)
@@ -1046,6 +1233,8 @@ export function boundToString(node: BoundExpression): string {
         case BoundKind.Projection: return `...${boundToString(node.value)}`
         case BoundKind.Match: return `match ${boundToString(node.target)} { ${node.clauses.map(boundClauseToString).join()} }`
         case BoundKind.Variable: return `#${node.index}${node.name}`
+        case BoundKind.Debug: return `debug: ${boundToString(node.value)}`
+        case BoundKind.LambdaBody: return `debug: ${boundToString(node.body)}`
     }
 
     function boundClauseToString(node: BoundMatchClause): string {

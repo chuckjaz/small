@@ -34,6 +34,7 @@ interface BoundLet {
     kind: BoundKind.Let
     bindings: BoundExpression[]
     body: BoundExpression
+    symbols: number[] // debugger
 }
 
 interface BoundImport {
@@ -48,6 +49,7 @@ interface BoundLambda {
     start: number
     arity: number
     body: BoundExpression
+    symbols: number[] // debugger
 }
 
 interface BoundCall {
@@ -114,6 +116,7 @@ interface BoundMatchClause {
     size: number
     pattern: BoundExpression
     value: BoundExpression
+    symbols: number[]
 }
 
 interface BoundVariable {
@@ -224,12 +227,14 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
             case NodeKind.Let: {
                 const indexes = new Map<string, number>()
                 let index = 0
+                const symbols: number[] = []
                 for (const binding of node.bindings) {
                     const name = binding.name
                     if (indexes.has(name)) {
                         error(node, `Duplicate variable name $name`)
                     }
                     indexes.set(name, index++)
+                    symbols.push(symbolOf(name))
                 }
                 const letContext = contextOf(context, indexes)
                 const bindings = node.bindings.map(binding => b(letContext, binding.value))
@@ -237,7 +242,8 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 return {
                     kind: BoundKind.Let,
                     bindings,
-                    body
+                    body,
+                    symbols
                 }
             }
             case NodeKind.Import: {
@@ -263,11 +269,13 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const indexes = node.parameters.reduce((map, name, index) => (map.set(name, index), map), new Map<string, number>())
                 const lambdaContext = contextOf(context, indexes)
                 const body = b(lambdaContext, node.body)
+                const symbols = node.parameters.map(name => symbolOf(name))
                 return {
                     kind: BoundKind.Lambda,
                     start: node.start,
                     arity: indexes.size,
-                    body
+                    body,
+                    symbols
                 }
             }
             case NodeKind.Call: {
@@ -392,13 +400,15 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
                 const clauses = node.clauses.map<BoundMatchClause>(clause => {
                     const [builder, build] = scopeBuilder(context)
                     const pattern = b(builder, clause.pattern)
-                    const [size, clauseContext] = build()
+                    const [size, clauseContext, symbols] = build()
                     const value = b(clauseContext, clause.value)
+
                     return {
                         kind: BoundKind.MatchClause,
                         pattern,
                         size,
-                        value
+                        value,
+                        symbols
                     }
                 })
                 return {
@@ -412,7 +422,8 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
     }
 }
 
-export type CallContext = Value[][]
+export type CallContextFile = Value[] & { symbols?: number[] }
+export type CallContext = CallContextFile[]
 
 export type Value =
     Literal |
@@ -445,6 +456,7 @@ export interface LambdaValue {
     context: CallContext
     arity: number
     body: BoundExpression
+    symbols: number[]
 }
 
 export interface Imported {
@@ -506,9 +518,9 @@ export function valueEquals(a: Value, b: Value): boolean {
 }
 
 export interface Debugger {
-    startFunction(location: number): void
+    startFunction(location: number, callContext: CallContext): void
     endFunction(location: number): void
-    statement(location: number): boolean
+    statement(location: number, callContext: CallContext): boolean
 }
 
 function debuggerTransform(node: BoundExpression): BoundExpression {
@@ -546,7 +558,8 @@ function debuggerTransform(node: BoundExpression): BoundExpression {
             return {
                 kind: BoundKind.Let,
                 bindings: node.bindings.map(debuggerTransform),
-                body: rwrap(node.body)
+                body: rwrap(node.body),
+                symbols: node.symbols
             }
         case BoundKind.Import: return node
         case BoundKind.Lambda:
@@ -554,7 +567,8 @@ function debuggerTransform(node: BoundExpression): BoundExpression {
                 kind: BoundKind.Lambda,
                 start: node.start,
                 arity: node.arity,
-                body: wrapBody(rwrap(node.body), node.start)
+                body: wrapBody(rwrap(node.body), node.start),
+                symbols: node.symbols
             }
         case BoundKind.Call:
             return wrap({
@@ -606,7 +620,8 @@ function debuggerTransform(node: BoundExpression): BoundExpression {
                         kind: BoundKind.MatchClause,
                         size: clause.size,
                         pattern: debuggerTransform(clause.pattern),
-                        value: rwrap(clause.value)
+                        value: rwrap(clause.value),
+                        symbols: clause.symbols
                     }
                 }),
                 start: node.start
@@ -659,7 +674,8 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
                 return errorValue(node, "Internal error: invalid location for a variable")
             case BoundKind.Import: return node.value
             case BoundKind.Let: {
-                const bindings: Value[] = []
+                const bindings: CallContextFile = []
+                bindings.symbols = node.symbols
                 const letContext = [bindings, ...context]
                 for (const binding of node.bindings) {
                     const value = resolve(e(letContext, binding))
@@ -671,7 +687,7 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
             case BoundKind.Call: {
                 const target = resolve(e(context, node.target))
                 if (target.kind == NodeKind.Error) return target
-                const args: Value[] = []
+                const args: CallContextFile = []
                 for (const arg of node.args) {
                     const v = resolve(e(context, arg))
                     if (v.kind == NodeKind.Error) return v
@@ -682,6 +698,7 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
                         if (target.arity != node.args.length) {
                             return  errorValue(node, `Incorrect number of arguments, expected ${target.arity}, received ${node.args.length}`)
                         }
+                        args.symbols = target.symbols
                         const callContext = [args, ...target.context]
                         return () => {
                             const result = e(callContext, target.body)
@@ -785,7 +802,8 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
                     start: node.start,
                     context,
                     arity: node.arity,
-                    body: node.body
+                    body: node.body,
+                    symbols: node.symbols
                 }
             }
             case BoundKind.Quote: {
@@ -809,8 +827,9 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
                 const target = resolve(e(context, node.target))
                 if (target.kind == NodeKind.Error) return target
                 for (const clause of node.clauses) {
-                    const file: Value[] = []
+                    const file: CallContextFile = []
                     if (match(context, clause.pattern, target, file)) {
+                        file.symbols = clause.symbols
                         const matchContext = [file, ...context]
                         return e(matchContext, clause.value)
                     }
@@ -819,13 +838,13 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
             }
             case BoundKind.Debug: {
                 const value = node.value
-                if (dbg?.statement(node.start) == false) {
+                if (dbg?.statement(node.start, context) == false) {
                     return errorValue(node, "Terminate")
                 }
                 return e(context, node.value)
             }
             case BoundKind.LambdaBody: {
-                dbg?.startFunction(node.start)
+                dbg?.startFunction(node.start, context)
                 const value = e(context, node.body)
                 dbg?.endFunction(node.start)
                 return value
@@ -845,7 +864,8 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
                 return {
                     kind: BoundKind.Let,
                     bindings,
-                    body
+                    body,
+                    symbols: node.symbols
                 }
             }
             case BoundKind.Import: return node
@@ -855,7 +875,8 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
                     kind: BoundKind.Lambda,
                     start: node.start,
                     arity: node.arity,
-                    body
+                    body,
+                    symbols: node.symbols
                 }
             }
             case BoundKind.Call: {
@@ -957,7 +978,8 @@ function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
                 kind: BoundKind.MatchClause,
                 size: node.size,
                 pattern,
-                value
+                value,
+                symbols: node.symbols
             }
         }
     }
@@ -1122,19 +1144,21 @@ function contextOf(parent: BindingContext, indexes: Map<string, number>): Bindin
 }
 
 
-function scopeBuilder(parent: BindingContext): [BindingContext, () => [number, BindingContext]] {
+function scopeBuilder(parent: BindingContext): [BindingContext, () => [number, BindingContext, number[]]] {
     const indexes = new Map<string, number>()
+    const symbols: number[] = []
 
     function allocate(name: string): number {
         const last = indexes.get(name)
         if (last !== undefined) return last
         const index = indexes.size
         indexes.set(name, index)
+        symbols.push(symbolOf(name))
         return index
     }
 
-    function build(): [number, BindingContext] {
-        return [indexes.size, contextOf(parent, indexes)]
+    function build(): [number, BindingContext, number[]] {
+        return [indexes.size, contextOf(parent, indexes), symbols]
     }
 
     const scope: Scope = {

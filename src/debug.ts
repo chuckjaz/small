@@ -1,5 +1,7 @@
-import { Expression } from './ast';
-import { Debugger, evaluate, Value } from './eval'
+import { Expression, LiteralKind, Node, NodeKind } from './ast';
+import { CallContext, Debugger, ErrorValue, evaluate, symbolOf, Value } from './eval'
+import { Lexer } from './lexer';
+import { parse } from './parser';
 
 const enum Instruction {
     Continue
@@ -59,12 +61,13 @@ export interface Terminate {
 export interface DebugFrame {
     location: number
     func: number
+    callContext: CallContext
 }
 
 export interface DebugContext {
     location: number
     stackDepth(): number
-    requestFrame(frame: number): DebugFrame
+    requestFrame(frame?: number): DebugFrame
 }
 
 export interface DebugController {
@@ -91,8 +94,8 @@ export class Debug implements Debugger {
         return {
             get location() { return d.stack.location },
             stackDepth(): number { return d.stack.depth },
-            requestFrame(frame: number): DebugFrame {
-                return d.stack.frame(frame)
+            requestFrame(frame?: number): DebugFrame {
+                return d.stack.frame(frame ?? this.stackDepth() - 1)
             }
         }
     }(this)
@@ -102,16 +105,16 @@ export class Debug implements Debugger {
         this.controller = controller
     }
 
-    startFunction(location: number): void {
-        this.stack.push(location)
+    startFunction(location: number, callContext: CallContext): void {
+        this.stack.push(location, callContext)
     }
 
     endFunction(location: number): void {
         this.stack.pop()
     }
 
-    statement(location: number): boolean {
-        this.stack.update(location)
+    statement(location: number, callContext: CallContext): boolean {
+        this.stack.update(location, callContext)
         const result = this.state.next()
         return !result.done
     }
@@ -189,25 +192,80 @@ export class Debug implements Debugger {
 }
 
 class Stack {
-    private locations: [number,number][] = [[0, 0]]
+    private frames: DebugFrame[] = [{ func: 0, location: 0, callContext: []}]
 
-    update(location: number) {
-        this.locations[this.depth -1][1] = location
+    update(location: number, callContext: CallContext) {
+        const frame = this.frames[this.depth - 1]
+        frame.location = location
+        frame.callContext = callContext
     }
 
-    push(location: number) {
-        this.locations.push([location, 0])
+    push(location: number, callContext: CallContext) {
+        this.frames.push({ func: location, location: 0, callContext })
     }
 
-    pop() { this.locations.pop() }
+    pop() { this.frames.pop() }
 
-    get depth() { return this.locations.length }
+    get depth() { return this.frames.length }
     get location() {
-        return this.locations[this.depth - 1][1]
+        return this.frames[this.depth - 1].location
     }
 
     frame(depth: number): DebugFrame {
-        const [func, location] = this.locations[depth]
-        return { func, location }
+        return this.frames[depth]
+    }
+}
+
+export function debugEvaluator(text: string, callContext: CallContext): Value {
+    const lexer = new Lexer(text)
+    const node = parse(lexer, "<expression>")
+    return e(node)
+
+    function e(node: Expression): Value {
+        switch (node.kind) {
+            case NodeKind.Literal: return node
+            case NodeKind.Reference: {
+                const symbol = symbolOf(node.name)
+                for (const file of callContext) {
+                    const index = file.symbols?.indexOf(symbol) ?? -1
+                    if (index >= 0) return file[index]
+                }
+                return err(node, `Symbol "${node.name}" not found`)
+            }
+            case NodeKind.Select: {
+                const target = e(node.target)
+                const symbol = symbolOf(node.name)
+                switch (target.kind) {
+                    case NodeKind.Record: {
+                        const index = target.cls[symbol]
+                        if (index !== undefined) return target.values[index]
+                        return err(node, `Member ${node.name} not found`)
+                    }
+                    case NodeKind.Error: return target
+                    default: return err(node, "Expected a record")
+                }
+            }
+            case NodeKind.Index: {
+                const target = e(node.target)
+                if (target.kind == NodeKind.Error) return target
+                if (target.kind != NodeKind.Array) 
+                    return err(node.target, "Expected an array")
+                const index = e(node.index)
+                if (index.kind == NodeKind.Error) return index
+                if (index.kind != NodeKind.Literal || index.literal != LiteralKind.Int)
+                    return err(node.index, "Expected an integer")
+                return target.values[index.value] ?? err(node.index, `Index out of bound, ${index.value}, 0..${target.values.length - 1}`)
+            }
+            default:
+               return err(node, "Unsupported in the debugger")
+        }
+    }
+
+    function err(node: Node, message: string): ErrorValue {
+        return {
+            kind: NodeKind.Error,
+            message,
+            start: node.start
+        }
     }
 }

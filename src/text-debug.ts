@@ -1,6 +1,9 @@
-import { DebugContext, DebugController, RequestKind, StepInto, StepOut, StepOver, Request, Terminate, Run } from "./debug";
+import { DebugContext, DebugController, RequestKind, StepInto, StepOut, StepOver, Request, Terminate, Run, debugEvaluator } from "./debug";
 import { FileSet, Position } from "./files";
 import * as fs from 'fs'
+import { valueToString } from "./value-string";
+import { NodeKind } from "./ast";
+import { nameOfSymbol } from "./eval";
 
 interface Command {
     name: string
@@ -32,6 +35,8 @@ export class TextDebugger implements DebugController {
         this.command("run", () => run, "Run the to the next break-point", "r")
         this.command("trace", this.trace.bind(this), "Print the stack", "bt")
         this.command("files", this.files.bind(this), "Print the current list of files active")
+        this.command("evaluate", this.evaluate.bind(this), "Evaluate an expression in the current context", "e", "=")
+        this.command("locals", this.locals.bind(this), "Display locals", "l")
         this.command("help", this.help.bind(this), "Print this message", "h", "?")
     }
 
@@ -106,6 +111,30 @@ export class TextDebugger implements DebugController {
         return stopped
     }
 
+    private evaluate(context: DebugContext, ...args: string[]): undefined {
+        const expression = args.join(" ")
+        const frame = context.requestFrame()
+        const value = debugEvaluator(expression, frame.callContext)
+        if (value.kind == NodeKind.Error) {
+            console.log(`Error: ${value.message}`)
+            return
+        }
+        console.log(valueToString(value))
+        return stopped
+    }
+
+    private locals(context: DebugContext): undefined {
+        const frame = context.requestFrame()
+        const locals = frame.callContext[0]
+        if (locals) {
+            let index = 0
+            for (const symbol of locals.symbols ?? []) {
+                console.log(`${nameOfSymbol(symbol)}: ${valueToString(locals[index++])}`)
+            }
+        }
+        return stopped
+    }
+
     private help(): undefined {
         const definitions = this.definitions
         const names: string[] = []
@@ -125,7 +154,7 @@ export class TextDebugger implements DebugController {
         return stopped
     }
 
-    private command(name: string, execute: (context: DebugContext) => Request | undefined, description: string, ...shortNames: string[]) {
+    private command(name: string, execute: (context: DebugContext, ...args: string[]) => Request | undefined, description: string, ...shortNames: string[]) {
         const command = { name, execute, description, shortNames }
         const commands = this.commands
         commands.set(name, command)

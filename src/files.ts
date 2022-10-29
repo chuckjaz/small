@@ -1,3 +1,5 @@
+import { search } from './array-search'
+
 export interface Location {
     readonly start: number
 }
@@ -13,12 +15,14 @@ export interface File {
     readonly fileName: string
     readonly size: number
     position(location: Location): Position | undefined
+    pos(offset: number): number
     lineRange(line: number): { start: number, end: number }
 }
 
 export interface FileSet {
     declare(fileName: string, size: number): FileBuilder
     file(locaton: Location): File | undefined
+    find(fileName: string): File | undefined
     position(location: Location): Position | undefined
 }
 
@@ -47,6 +51,13 @@ class FileSetImpl implements FileSet {
         const index = search(this.files, location.start, numberCompare, keyOfFile)
         const fileIndex = index < 0 ? -index - 2 : index
         return this.files[fileIndex]
+    }
+
+    find(fileName: string): File | undefined {
+        for (const file of this.files) {
+            if (file.fileName == fileName) return file
+        }
+        return undefined
     }
 
     position(location: Location): Position | undefined {
@@ -97,6 +108,10 @@ class FileImpl implements File {
         this.lines = lines
     }
 
+    pos(offset: number): number {
+        return this.base + offset
+    }
+
     position(location: Location): Position | undefined {
         const offset = location.start - this.base
         if (offset < 0 || offset > this.size) return undefined
@@ -143,24 +158,6 @@ function identity<T>(a: T): T {
 
 function keyOfFile(file: FileImpl): number {
     return file.base
-}
-
-function search<K, T>(arr: T[], key: K, compare: (a: K, b: K) => number, keyOf: (a: T) => K): number {
-    let start = 0
-    let end = arr.length - 1
-    while (start <= end) {
-        const mid = (start + end) >> 1
-        const v = arr[mid]
-        const result = compare(key, keyOf(v))
-        if (result > 0) {
-            start = mid + 1
-        } else if (result < 0) {
-            end = mid - 1
-        } else {
-            return mid
-        }
-    }
-    return -start - 1
 }
 
 function insert<T>(arr: T[], value: T, compare: (a: T, b: T) => number) {

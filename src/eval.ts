@@ -518,16 +518,22 @@ export function valueEquals(a: Value, b: Value): boolean {
 }
 
 export interface Debugger {
+    recordLocation(location: number): void
     startFunction(location: number, callContext: CallContext): void
     endFunction(location: number): void
     statement(location: number, callContext: CallContext): boolean
 }
 
-function debuggerTransform(node: BoundExpression): BoundExpression {
+function debuggerTransform(
+    node: BoundExpression,
+    dbg: Debugger
+): BoundExpression {
+    return tx(node)
 
     function wrap(node: BoundExpression): BoundExpression {
         if (node.kind == BoundKind.Debug) return node
         if ('start' in node) {
+            dbg.recordLocation(node.start)
             return {
                 kind: BoundKind.Debug,
                 start: node.start,
@@ -538,7 +544,7 @@ function debuggerTransform(node: BoundExpression): BoundExpression {
     }
 
     function rwrap(node: BoundExpression): BoundExpression {
-        return wrap(debuggerTransform(node))
+        return wrap(debuggerTransform(node, dbg))
     }
 
     function wrapBody(node: BoundExpression, start: number): BoundExpression {
@@ -549,92 +555,94 @@ function debuggerTransform(node: BoundExpression): BoundExpression {
         }
     }
 
-    switch (node.kind) {
-        case NodeKind.Literal: return node
-        case NodeKind.Error: return node
-        case BoundKind.Reference: return node
-        case BoundKind.Projection: return node
-        case BoundKind.Let:
-            return {
-                kind: BoundKind.Let,
-                bindings: node.bindings.map(debuggerTransform),
-                body: rwrap(node.body),
-                symbols: node.symbols
-            }
-        case BoundKind.Import: return node
-        case BoundKind.Lambda:
-            return {
-                kind: BoundKind.Lambda,
-                start: node.start,
-                arity: node.arity,
-                body: wrapBody(rwrap(node.body), node.start),
-                symbols: node.symbols
-            }
-        case BoundKind.Call:
-            return wrap({
-                kind: BoundKind.Call,
-                args: node.args.map(debuggerTransform),
-                target: debuggerTransform(node.target),
-                start: node.start
-            })
-        case BoundKind.Record:
-            return {
-                kind: BoundKind.Record,
-                members: node.members.map(debuggerTransform),
-                symbols: node.symbols
-            }
-        case BoundKind.Array:
-            return {
-                kind: BoundKind.Array,
-                values: node.values.map(debuggerTransform),
-                start: node.start
-            }
-        case BoundKind.Select:
-            return {
-                kind: BoundKind.Select,
-                target: debuggerTransform(node.target),
-                symbol: node.symbol,
-                name: node.name,
-                start: node.start
-            }
-        case BoundKind.Index:
-            return {
-                kind: BoundKind.Index,
-                target: debuggerTransform(node.target),
-                index: debuggerTransform(node.index),
-                start: node.start
-            }
-        case BoundKind.Quote: return node
-        case BoundKind.Splice:
-            return {
-                kind: BoundKind.Splice,
-                target: debuggerTransform(node.target),
-                start: node.start
-            }
-        case BoundKind.Match:
-            return {
-                kind: BoundKind.Match,
-                target: debuggerTransform(node.target),
-                clauses: node.clauses.map(clause => {
-                    return {
-                        kind: BoundKind.MatchClause,
-                        size: clause.size,
-                        pattern: debuggerTransform(clause.pattern),
-                        value: rwrap(clause.value),
-                        symbols: clause.symbols
-                    }
-                }),
-                start: node.start
-            }
-        case BoundKind.Variable: return node
-        case BoundKind.Debug: return node
-        case BoundKind.LambdaBody: return node
+    function tx(node: BoundExpression): BoundExpression {
+        switch (node.kind) {
+            case NodeKind.Literal: return node
+            case NodeKind.Error: return node
+            case BoundKind.Reference: return node
+            case BoundKind.Projection: return node
+            case BoundKind.Let:
+                return {
+                    kind: BoundKind.Let,
+                    bindings: node.bindings.map(tx),
+                    body: rwrap(node.body),
+                    symbols: node.symbols
+                }
+            case BoundKind.Import: return node
+            case BoundKind.Lambda:
+                return {
+                    kind: BoundKind.Lambda,
+                    start: node.start,
+                    arity: node.arity,
+                    body: wrapBody(rwrap(node.body), node.start),
+                    symbols: node.symbols
+                }
+            case BoundKind.Call:
+                return wrap({
+                    kind: BoundKind.Call,
+                    args: node.args.map(tx),
+                    target: tx(node.target),
+                    start: node.start
+                })
+            case BoundKind.Record:
+                return {
+                    kind: BoundKind.Record,
+                    members: node.members.map(tx),
+                    symbols: node.symbols
+                }
+            case BoundKind.Array:
+                return {
+                    kind: BoundKind.Array,
+                    values: node.values.map(tx),
+                    start: node.start
+                }
+            case BoundKind.Select:
+                return {
+                    kind: BoundKind.Select,
+                    target: tx(node.target),
+                    symbol: node.symbol,
+                    name: node.name,
+                    start: node.start
+                }
+            case BoundKind.Index:
+                return {
+                    kind: BoundKind.Index,
+                    target: tx(node.target),
+                    index: tx(node.index),
+                    start: node.start
+                }
+            case BoundKind.Quote: return node
+            case BoundKind.Splice:
+                return {
+                    kind: BoundKind.Splice,
+                    target: tx(node.target),
+                    start: node.start
+                }
+            case BoundKind.Match:
+                return {
+                    kind: BoundKind.Match,
+                    target: tx(node.target),
+                    clauses: node.clauses.map(clause => {
+                        return {
+                            kind: BoundKind.MatchClause,
+                            size: clause.size,
+                            pattern: tx(clause.pattern),
+                            value: rwrap(clause.value),
+                            symbols: clause.symbols
+                        }
+                    }),
+                    start: node.start
+                }
+            case BoundKind.Variable: return node
+            case BoundKind.Debug: return node
+            case BoundKind.LambdaBody: return node
+        }
     }
 }
 
 function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
     if (dbg) {
-        expression = debuggerTransform(expression)
+        expression = debuggerTransform(expression, dbg)
     }
     return resolve(e([], expression))
 

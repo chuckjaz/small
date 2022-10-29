@@ -1,3 +1,4 @@
+import { searchNum } from './array-search';
 import { Expression, LiteralKind, Node, NodeKind } from './ast';
 import { CallContext, Debugger, ErrorValue, evaluate, symbolOf, Value } from './eval'
 import { Lexer } from './lexer';
@@ -65,9 +66,11 @@ export interface DebugFrame {
 }
 
 export interface DebugContext {
-    location: number
+    readonly location: number
     stackDepth(): number
     requestFrame(frame?: number): DebugFrame
+    validBreakLocations(start?: number, end?: number): number[]
+    breakpointList(start?: number, end?: number): number[]
 }
 
 export interface DebugController {
@@ -86,9 +89,13 @@ export function debug(
 
 export class Debug implements Debugger {
     private stack = new Stack()
+    private validBreakPoints = new Set<number>()
     private breakPoints: boolean[] = []
+    private minBreak = Number.MAX_SAFE_INTEGER
+    private maxBreak = 0
     private state: Iterator<Instruction, any, number>
     private controller: DebugController
+    private validBreakPointsCache: number[] | undefined = undefined
 
     private context = function (d): DebugContext {
         return {
@@ -96,6 +103,12 @@ export class Debug implements Debugger {
             stackDepth(): number { return d.stack.depth },
             requestFrame(frame?: number): DebugFrame {
                 return d.stack.frame(frame ?? this.stackDepth() - 1)
+            },
+            validBreakLocations(start?: number, end?: number): number[] {
+                return d.validBreakLocations(start, end)
+            },
+            breakpointList(start?: number, end?: number): number[] {
+                return d.breakpointList(start, end)
             }
         }
     }(this)
@@ -103,6 +116,13 @@ export class Debug implements Debugger {
     constructor(controller: DebugController) {
         this.state = this.debug()
         this.controller = controller
+    }
+
+    recordLocation(location: number): void {
+        if (!(this.validBreakPoints.has(location))) {
+            this.validBreakPoints.add(location)
+            this.validBreakPointsCache = undefined
+        }
     }
 
     startFunction(location: number, callContext: CallContext): void {
@@ -115,7 +135,7 @@ export class Debug implements Debugger {
 
     statement(location: number, callContext: CallContext): boolean {
         this.stack.update(location, callContext)
-        const result = this.state.next()
+        const result = this.state.next(location)
         return !result.done
     }
 
@@ -146,6 +166,7 @@ export class Debug implements Debugger {
                 }
                 case State.Running:
                     if (this.breakPoints[location] === true) {
+                        console.log("Stopping for breakpoint")
                         state = State.Stopped
                         break
                     }
@@ -168,6 +189,8 @@ export class Debug implements Debugger {
                     case RequestKind.Terminate: return
                     case RequestKind.SetBreakpoints: {
                         for (const loc of request.locations) {
+                            if (loc < this.minBreak) this.minBreak = loc
+                            if (loc > this.maxBreak) this.maxBreak = loc
                             this.breakPoints[loc] = true
                         }
                         state = State.Stopped
@@ -181,14 +204,48 @@ export class Debug implements Debugger {
                             }
                         } else {
                             this.breakPoints = []
+                            this.minBreak = Number.MAX_SAFE_INTEGER
+                            this.maxBreak = 0
                         }
                         break
                     }
                 }
             } else state = State.Stopped
         }
-
     }
+
+    private updateBreakpointCache() {
+        if (this.validBreakPointsCache) return
+        const cache: number[] = []
+        for (const point of this.validBreakPoints.keys()) {
+            cache.push(point)
+        }
+        cache.sort()
+        this.validBreakPointsCache = cache
+    }
+
+    validBreakLocations(start: number = this.minBreak, end: number = this.maxBreak): number[] {
+        this.updateBreakpointCache()
+        const breakpoints = this.validBreakPointsCache ?? []
+        const startIndex = search(breakpoints, start)
+        const endIndex = search(breakpoints, end)
+        return breakpoints.slice(startIndex, endIndex)
+    }
+
+    breakpointList(start: number = this.minBreak, end: number = this.maxBreak): number[] {
+        const result: number[] = []
+        this.breakPoints.forEach((value, index) => {
+            if (value && (index >= start && index <= end)) {
+                result.push(index)
+            }
+        })
+        return result
+    }
+}
+
+function search(arr: number[], value: number): number {
+    const result = searchNum(arr, value)
+    return result > 0 ? result : -result - 1
 }
 
 class Stack {
@@ -248,7 +305,7 @@ export function debugEvaluator(text: string, callContext: CallContext): Value {
             case NodeKind.Index: {
                 const target = e(node.target)
                 if (target.kind == NodeKind.Error) return target
-                if (target.kind != NodeKind.Array) 
+                if (target.kind != NodeKind.Array)
                     return err(node.target, "Expected an array")
                 const index = e(node.index)
                 if (index.kind == NodeKind.Error) return index

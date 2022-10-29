@@ -39,7 +39,7 @@ let
             { #message } in ["Failed", fileName, module],
             { #result } in ["Passed", fileName],
             #else in ["Failed", "unexpected", else]
-        }
+        },
 in [
     [
         expect([], numbers(Lexer(""))),

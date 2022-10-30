@@ -1,6 +1,6 @@
 import { Lexer } from "./lexer";
 import { parse } from "./parser";
-import { ArrayValue, ErrorValue, evaluate, importedOf, Value } from "./eval";
+import { ArrayValue, Debugger, ErrorValue, evaluate, importedOf, Value } from "./eval";
 import { Flags } from "./flags";
 
 import * as fs from 'fs'
@@ -22,12 +22,12 @@ function p(text: string, fileName: string): Expression {
     return result
 }
 
-export function run(fileName: string): Value {
+export function run(fileName: string, dbg?: Debugger): Value {
     try {
         const dirName = path.dirname(fileName)
         const text = readFile(fileName)
         const value = p(text, fileName)
-        const result = evaluate(value, (name) => imports(name, dirName))
+        const result = evaluate(value, (name, dbg) => imports(name, dirName, dbg), dbg)
         return result
     } catch (e) {
         if ('start' in (e as any)) {
@@ -55,7 +55,7 @@ export function runDebug(fileName: string): Value {
         const result = debug(
             value,
             controller,
-            (name) => imports(name, dirName)
+            (name, dbg) => imports(name, dirName, dbg)
         )
         return result
     } catch (e) {
@@ -98,7 +98,6 @@ if (flags.args.length != 1) {
     console.log(`Expected a single file name`)
     process.exit(2)
 }
-
 
 try {
     const filename = flags.args[0]
@@ -222,7 +221,7 @@ function arraySet(a: Value[], index: number, value: Value): Value[] {
     return result
 }
 
-function imports(name: string, relativeTo: string): Value {
+function imports(name: string, relativeTo: string, dbg?: Debugger): Value {
     const mod = modules.get(name)
     if (mod !== undefined) return mod
     switch (name) {
@@ -268,7 +267,7 @@ function imports(name: string, relativeTo: string): Value {
     const fileMod = modules.get(fileName)
     if (fileMod !== undefined) return fileMod
     if (fs.existsSync(fileName)) {
-        return recordModule(fileName, flags.options.debug ? runDebug(fileName) : run(fileName))
+        return recordModule(fileName, run(fileName, dbg))
     }
     return errorValue(`Cannot find '${name}'`)
 }

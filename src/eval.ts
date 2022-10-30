@@ -201,7 +201,7 @@ export function nameOfSymbol(symbol: number): string {
     return symbolNames[symbol] ?? `<unknown symbol ${symbol}>`
 }
 
-function bind(node: Expression, imports?: (name: string) => Value): BoundExpression {
+function bind(node: Expression, imports?: (name: string, dbg?: Debugger) => Value, dbg?: Debugger): BoundExpression {
 
     return b(emptyContext, node)
 
@@ -248,7 +248,7 @@ function bind(node: Expression, imports?: (name: string) => Value): BoundExpress
             }
             case NodeKind.Import: {
                 const name = node.name
-                const value = imports ? imports(name) : undefined
+                const value = imports ? imports(name, dbg) : undefined
                 if (value && value.kind == NodeKind.Error) {
                     if (value.start == 0) value.start = node.start
                     return value
@@ -522,6 +522,7 @@ export interface Debugger {
     startFunction(location: number, callContext: CallContext): void
     endFunction(location: number): void
     statement(location: number, callContext: CallContext): boolean
+    importedModule(): void
 }
 
 function debuggerTransform(
@@ -643,6 +644,7 @@ function debuggerTransform(
 function boundEvaluate(expression: BoundExpression, dbg?: Debugger): Value {
     if (dbg) {
         expression = debuggerTransform(expression, dbg)
+        dbg.importedModule()
     }
     return resolve(e([], expression))
 
@@ -1206,8 +1208,8 @@ export function importedOf(name: string, fun: (file: Value[]) => Value): Importe
     }
 }
 
-export function evaluate(expression: Expression, imports?: (name: string) => Value, dbg?: Debugger): Value {
-    const boundExpression = bind(expression, imports)
+export function evaluate(expression: Expression, imports?: (name: string, dbg?: Debugger) => Value, dbg?: Debugger): Value {
+    const boundExpression = bind(expression, imports, dbg)
     return boundEvaluate(boundExpression, dbg)
 }
 

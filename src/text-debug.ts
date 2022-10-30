@@ -1,5 +1,5 @@
 import { DebugContext, DebugController, RequestKind, StepInto, StepOut, StepOver, Request, Terminate, Run, debugEvaluator, SetBreakpoints, ClearBreakpoints } from "./debug";
-import { FileSet, Position } from "./files";
+import { FileSet, Position, File } from "./files";
 import * as fs from 'fs'
 import { valueToString } from "./value-string";
 import { NodeKind } from "./ast";
@@ -19,11 +19,18 @@ const terminate: Terminate = { kind: RequestKind.Terminate }
 const run: Run = { kind: RequestKind.Run }
 const stopped = undefined
 
+interface BreakSpec {
+    fileSpec: string
+    line: number
+    column?: number
+}
+
 export class TextDebugger implements DebugController {
     private fileSet: FileSet
     private fileText: Map<string, string>
     private commands = new Map<string, Command>()
     private definitions: Command[] = []
+    private pendingBreakpoints: BreakSpec[] = []
 
     constructor(fileSet: FileSet, fileText?: Map<string, string>) {
         this.fileSet = fileSet
@@ -48,6 +55,24 @@ export class TextDebugger implements DebugController {
             const result = this.expectCommand(context)
             if (result) return result
         }
+    }
+
+    importedModule(context: DebugContext): SetBreakpoints | undefined {
+        const locations: number[] = []
+        const pending = this.pendingBreakpoints
+        for (let i = pending.length - 1; i >= 0; i--) {
+            const spec = pending[i]
+            const locationsResult = this.findLocations(context, spec.fileSpec, spec.line, spec.column)
+            if (typeof locationsResult === "string") continue
+            locations.push(...locationsResult.locations)
+            pending.splice(i, 1)
+        }
+        if (locations.length > 0) {
+            return {
+                kind: RequestKind.SetBreakpoints,
+                locations
+            }
+        } else return undefined
     }
 
     private lastCommand: string | undefined
@@ -108,45 +133,35 @@ export class TextDebugger implements DebugController {
     }
 
     private break(context: DebugContext, ...args: string[]): SetBreakpoints | undefined {
+        const index = args.indexOf("-p")
+        let pending = false
+        if (index >= 0) {
+            pending = true
+            args.splice(index, 1)
+        }
         if (args.length < 2 || args.length > 3) {
-            console.log("Invalidate break location\nbreak <filename> <line> [<column>]")
+            console.log("Invalidate break location\nbreak [-p] <filename> <line> [<column>]")
             return stopped
         }
         const [fileSpec, lineText, columnText] = args
-        if (!fileSpec) {
-            console.log("Requires a file name parameter")
+        const breakSpec = this.parseBreakpoint(fileSpec, lineText, columnText)
+        if (typeof breakSpec === "string") {
+            console.log(breakSpec)
             return stopped
         }
-        const fileName = this.findFile(fileSpec)
-        if (!fileName) {
-            console.log(`No file containing "${fileSpec}" found`)
+        if ( 'fileSpec' in breakSpec) {
+            if (pending) this.pendingBreakpoints.push(breakSpec)
+            else console.log(`No module found for file ${breakSpec.fileSpec}`)
             return stopped
         }
-        if (lineText === undefined) {
-            console.log("Requires a line number")
+        const { fileName, line } = breakSpec
+        const locationsResult = this.findLocations(context, fileName, line)
+        if (typeof locationsResult === "string") {
+            console.log(locationsResult)
             return stopped
-        }
-        const line = tryParseInt(lineText)
-        if (line === undefined) return stopped
-        let column: number | undefined = undefined
-        if (columnText != undefined) {
-            column = tryParseInt(columnText)
-            if (column === undefined) return stopped
         }
 
-        const file = this.fileSet.find(fileName)
-        if (file === undefined) {
-            console.log(`File "${fileName}" not found in file set`)
-            return stopped
-        }
-        const lineOffsets = file.lineRange(line)
-        const startPos = file.pos(lineOffsets.start)
-        const endPos = file.pos(lineOffsets.end)
-        const locations = context.validBreakLocations(startPos, endPos)
-        if (locations.length == 0) {
-            console.log(`No break location found on line ${line}`)
-            return stopped
-        }
+        const { locations, file } = locationsResult
 
         for (const start of locations) {
             const position = file.position({ start })
@@ -160,11 +175,46 @@ export class TextDebugger implements DebugController {
         }
     }
 
+    private parseBreakpoint(fileSpec?: string, lineText?: string, columnText?: string): { fileName: string, line: number, column?: number } | BreakSpec | string {
+        if (!fileSpec) return  "Requires a file name parameter"
+        if (lineText === undefined) return "Requires a line number"
+        const line = tryParseInt(lineText)
+        if (line === undefined) return `The text "${lineText}" is not a valid number`
+        const fileName = this.findFile(fileSpec)
+        if (!fileName) return { fileSpec, fileName, line }
+        return { fileName, line }
+    }
+
+    private findLocations(context: DebugContext, fileSpec: string, line: number, column?: number): { locations: number[], file: File } | string {
+        const fileName = this.findFile(fileSpec)
+        if (!fileName) return `File "${fileName}" not found in file set`
+        const file = this.fileSet.find(fileName)
+        if (file === undefined) return `File "${fileName}" not found in file set`
+        const lineOffsets = file.lineRange(line)
+        const startPos = file.pos(lineOffsets.start)
+        const endPos = file.pos(lineOffsets.end)
+        const locations = context.validBreakLocations(startPos, endPos)
+        if (locations.length == 0) {
+            return `No break location found on line ${line}`
+        }
+        return { locations, file }
+    }
+
     private breaklist(context: DebugContext): undefined {
+        if (this.pendingBreakpoints.length > 0) {
+            console.log("Pending breakpoints ---")
+            for (const breakSpec of this.pendingBreakpoints) {
+                console.log(`${breakSpec.fileSpec}:${breakSpec.line}`)
+            }
+            console.log()
+        }
         const breakpoints = context.breakpointList()
         if (breakpoints.length == 0) {
-            console.log("No breakpoints set")
+            if (this.pendingBreakpoints.length == 0) {
+                console.log("No breakpoints set")
+            }
         } else {
+            console.log("Breakpoints ---")
             for (const start of breakpoints) {
                 console.log(this.fileSet.position({ start })?.display() ?? `<no source for ${start}`)
             }
@@ -284,7 +334,6 @@ function tryParseInt(value: string, radix?: number): number | undefined {
     try {
         return parseInt(value, radix)
     } catch (e) {
-        console.log(`The text "${value}" is not a valid number`)
         return undefined
     }
 }

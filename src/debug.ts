@@ -75,12 +75,13 @@ export interface DebugContext {
 
 export interface DebugController {
     notification(context: DebugContext): Request
+    importedModule(context: DebugContext): SetBreakpoints | undefined
 }
 
 export function debug(
     expression: Expression,
     controller: DebugController,
-    imports?: (name: string) => Value
+    imports?: (name: string, dbg?: Debugger) => Value
 ): Value {
     const dbg = new Debug(controller)
     const result = evaluate(expression, imports, dbg)
@@ -139,6 +140,11 @@ export class Debug implements Debugger {
         return !result.done
     }
 
+    importedModule(): void {
+        const request = this.controller.importedModule(this.context)
+        if (request) this.setBreakpoints(request.locations)
+    }
+
     *debug(): Iterator<Instruction, any, number> {
         let state: State = State.StepInto
         let stepOverDepth = 0
@@ -188,11 +194,7 @@ export class Debug implements Debugger {
                         break
                     case RequestKind.Terminate: return
                     case RequestKind.SetBreakpoints: {
-                        for (const loc of request.locations) {
-                            if (loc < this.minBreak) this.minBreak = loc
-                            if (loc > this.maxBreak) this.maxBreak = loc
-                            this.breakPoints[loc] = true
-                        }
+                        this.setBreakpoints(request.locations)
                         state = State.Stopped
                         break
                     }
@@ -214,13 +216,21 @@ export class Debug implements Debugger {
         }
     }
 
+    private setBreakpoints(locations: number[]) {
+        for (const loc of locations) {
+            if (loc < this.minBreak) this.minBreak = loc
+            if (loc > this.maxBreak) this.maxBreak = loc
+            this.breakPoints[loc] = true
+        }
+    }
+
     private updateBreakpointCache() {
         if (this.validBreakPointsCache) return
         const cache: number[] = []
         for (const point of this.validBreakPoints.keys()) {
             cache.push(point)
         }
-        cache.sort()
+        cache.sort((a, b) => a - b)
         this.validBreakPointsCache = cache
     }
 

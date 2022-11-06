@@ -2,8 +2,9 @@ let
     logs = import "logs",
     strings = import "strings",
     ints = import "ints",
+    arrays = import "arrays",
 
-    tokens = import "token.sm"
+    tokens = import "token.sm",
     Token = tokens.Token,
     tokenToString = tokens.tokenToString,
 
@@ -35,18 +36,8 @@ let
                     }
                 in strings.concat("Expected one of ", strings.join(next(spec), ", ")),
             unexpected = /lex.Error(strings.concat(expectedTokens, ", received ", tokenToString(lex.token))),
-            allErrors = /n.match n {
-                0 in [unexpected],
-                #_ in [unexpected, ...allErrors(ints.sub(n, 1))]
-            },
-            set = /(s, n, parser).match n {
-                0 in match s {
-                    [#_, ...#ss] in [parser, ...ss],
-                },
-                #_ in match s {
-                    [#h, ...#t] in [h, ...set(t, ints.sub(n, 1), parser)]
-                }
-            },
+            allErrors = /n.arrays.extend([], n, unexpected),
+            set = /(s, n, parser).arrays.set(s, n, parser),
             produce = /(a, spec).match spec {
                 [[#token, #parser], ...#rest] in produce(set(a, token, parser), rest),
                 [] in a

@@ -23,6 +23,7 @@ interface BreakSpec {
     fileSpec: string
     line: number
     column?: number
+    error?: string
 }
 
 export class TextDebugger implements DebugController {
@@ -31,6 +32,7 @@ export class TextDebugger implements DebugController {
     private commands = new Map<string, Command>()
     private definitions: Command[] = []
     private pendingBreakpoints: BreakSpec[] = []
+    private autoLocals = false
 
     constructor(fileSet: FileSet, fileText?: Map<string, string>) {
         this.fileSet = fileSet
@@ -46,7 +48,7 @@ export class TextDebugger implements DebugController {
         this.command("clear", this.clearBreakpoints.bind(this), "Clear all breakpoints")
         this.command("files", this.files.bind(this), "Print the current list of files active")
         this.command("evaluate", this.evaluate.bind(this), "Evaluate an expression in the current context", "e", "=")
-        this.command("locals", this.locals.bind(this), "Display locals", "l")
+        this.command("locals", this.locals.bind(this), "Display locals (-a to toggle auto)", "l")
         this.command("help", this.help.bind(this), "Print this message", "h", "?")
     }
 
@@ -63,7 +65,10 @@ export class TextDebugger implements DebugController {
         for (let i = pending.length - 1; i >= 0; i--) {
             const spec = pending[i]
             const locationsResult = this.findLocations(context, spec.fileSpec, spec.line, spec.column)
-            if (typeof locationsResult === "string") continue
+            if (typeof locationsResult === "string") {
+                spec.error = locationsResult
+                continue
+            }
             locations.push(...locationsResult.locations)
             pending.splice(i, 1)
         }
@@ -79,6 +84,9 @@ export class TextDebugger implements DebugController {
 
     private expectCommand(context: DebugContext): Request | undefined {
         this.showPosition(context.location)
+        if (this.autoLocals) {
+            this.locals(context)
+        }
         process.stdout.write("> ")
         let line = readLine()
         if (line === undefined) process.exit(0)
@@ -157,7 +165,15 @@ export class TextDebugger implements DebugController {
         const { fileName, line } = breakSpec
         const locationsResult = this.findLocations(context, fileName, line)
         if (typeof locationsResult === "string") {
-            console.log(locationsResult)
+            if (pending) {
+                this.pendingBreakpoints.push({
+                    fileSpec: fileName,
+                    line,
+                    error: locationsResult
+                })
+            } else {
+                console.log(locationsResult)
+            }
             return stopped
         }
 
@@ -204,7 +220,11 @@ export class TextDebugger implements DebugController {
         if (this.pendingBreakpoints.length > 0) {
             console.log("Pending breakpoints ---")
             for (const breakSpec of this.pendingBreakpoints) {
-                console.log(`${breakSpec.fileSpec}:${breakSpec.line}`)
+                let msg = `${breakSpec.fileSpec}:${breakSpec.line}`
+                if (breakSpec.error) {
+                    msg += `\n  error: ${breakSpec.error}`
+                }
+                console.log(msg)
             }
             console.log()
         }
@@ -254,7 +274,10 @@ export class TextDebugger implements DebugController {
         return stopped
     }
 
-    private locals(context: DebugContext): undefined {
+    private locals(context: DebugContext, ...args: string[]): undefined {
+        if (args[0] == "-a") (
+            this.autoLocals = !this.autoLocals
+        )
         const frame = context.requestFrame()
         const locals = frame.callContext[0]
         if (locals) {

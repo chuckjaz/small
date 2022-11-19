@@ -569,7 +569,7 @@ function debuggerTransform(
                     body: rwrap(node.body),
                     symbols: node.symbols
                 }
-            case BoundKind.Import: return node
+            case BoundKind.Import: return wrap(node)
             case BoundKind.Lambda:
                 return {
                     kind: BoundKind.Lambda,
